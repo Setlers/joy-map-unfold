@@ -183,3 +183,39 @@
   0%   { transform: scale(0.5); opacity: 0.9; }
   100% { transform: scale(2.4); opacity: 0; }
 }
+
+/* Emotion popup */
+.emotion-popup-wrapper .leaflet-popup-content-wrapper {
+  background: var(--surface);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px -12px rgb(0 0 0 / 0.6);
+}
+.emotion-popup-wrapper .leaflet-popup-tip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.emotion-popup-wrapper .leaflet-popup-content {
+  margin: 10px 14px;
+  font-family: var(--font-sans);
+}
+.emotion-popup-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.emotion-popup-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted-foreground);
+}
+.emotion-popup-body {
+  font-size: 14px;
+  line-height: 1.4;
+  max-width: 220px;
+  word-wrap: break-word;
+  margin: 0;
+}
