@@ -9,7 +9,19 @@ interface EmotionRow {
   emotion: EmotionKey;
   lat: number;
   lng: number;
+  message: string | null;
   created_at: string;
+}
+
+const MAX_MESSAGE = 140;
+
+function escapeHtml(s: string) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 export function EmotionMap() {
@@ -23,6 +35,12 @@ export function EmotionMap() {
   useEffect(() => {
     selectedRef.current = selected;
   }, [selected]);
+
+  const [message, setMessage] = useState("");
+  const messageRef = useRef("");
+  useEffect(() => {
+    messageRef.current = message;
+  }, [message]);
 
   const [count, setCount] = useState(0);
 
@@ -60,9 +78,14 @@ export function EmotionMap() {
       map.on("click", async (e) => {
         const { lat, lng } = e.latlng;
         const emotion = selectedRef.current;
-        const { error } = await supabase
-          .from("emotions")
-          .insert({ emotion, lat, lng: ((lng + 540) % 360) - 180 });
+        const raw = messageRef.current.trim().slice(0, MAX_MESSAGE);
+        const payload = {
+          emotion,
+          lat,
+          lng: ((lng + 540) % 360) - 180,
+          message: raw.length > 0 ? raw : null,
+        };
+        const { error } = await supabase.from("emotions").insert(payload);
         if (error) {
           toast.error("Couldn't drop your feeling. Try again.");
           console.error(error);
@@ -70,13 +93,14 @@ export function EmotionMap() {
           toast.success(
             `${EMOTIONS_BY_KEY[emotion].emoji} ${EMOTIONS_BY_KEY[emotion].label} dropped`,
           );
+          setMessage("");
         }
       });
 
       // Initial load
       const { data } = await supabase
         .from("emotions")
-        .select("id, emotion, lat, lng, created_at")
+        .select("id, emotion, lat, lng, message, created_at")
         .order("created_at", { ascending: false })
         .limit(1000);
 
@@ -99,7 +123,6 @@ export function EmotionMap() {
         )
         .subscribe();
 
-      // store cleanup on map instance
       (map as unknown as { __channel: typeof channel }).__channel = channel;
     })();
 
@@ -135,14 +158,28 @@ export function EmotionMap() {
     });
 
     const marker = L.marker([row.lat, row.lng], { icon, keyboard: false }).addTo(map);
-    marker.bindTooltip(`${meta.emoji} ${meta.label}`, {
-      direction: "top",
-      offset: [0, -8],
-      opacity: 0.95,
-      className: "emotion-tooltip",
-    });
+
+    const hasMessage = row.message && row.message.trim().length > 0;
+    if (hasMessage) {
+      const safe = escapeHtml(row.message!.trim());
+      marker.bindPopup(
+        `<div class="emotion-popup"><div class="emotion-popup-head"><span class="text-base">${meta.emoji}</span><span class="emotion-popup-label">${meta.label}</span></div><p class="emotion-popup-body">${safe}</p></div>`,
+        { closeButton: true, className: "emotion-popup-wrapper" },
+      );
+    }
+    marker.bindTooltip(
+      hasMessage ? `${meta.emoji} ${meta.label} · tap to read` : `${meta.emoji} ${meta.label}`,
+      {
+        direction: "top",
+        offset: [0, -8],
+        opacity: 0.95,
+        className: "emotion-tooltip",
+      },
+    );
     markersRef.current.set(row.id, marker);
   }
+
+  const remaining = MAX_MESSAGE - message.length;
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden">
@@ -158,12 +195,32 @@ export function EmotionMap() {
           Feel the&nbsp;world.
         </h1>
         <p className="max-w-md text-sm text-muted-foreground sm:text-base">
-          Anonymous. One tap. Pick an emotion, then click anywhere on the map.
+          Anonymous. Pick an emotion, optionally leave a short note, then tap the map.
         </p>
       </header>
 
-      {/* Emotion picker */}
-      <div className="absolute inset-x-0 bottom-0 z-[400] flex justify-center p-4 sm:p-6">
+      {/* Composer + Emotion picker */}
+      <div className="absolute inset-x-0 bottom-0 z-[400] flex flex-col items-center gap-2 p-4 sm:p-6">
+        <div className="pointer-events-auto flex w-full max-w-md items-center gap-2 rounded-2xl border border-border bg-surface/80 px-3 py-2 shadow-2xl backdrop-blur-xl">
+          <span className="text-lg leading-none">{EMOTIONS_BY_KEY[selected].emoji}</span>
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value.slice(0, MAX_MESSAGE))}
+            placeholder="Say something (optional, anonymous)…"
+            maxLength={MAX_MESSAGE}
+            aria-label="Optional anonymous message"
+            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+          />
+          <span
+            className={`tabular-nums text-[10px] ${
+              remaining <= 20 ? "text-emotion-anger" : "text-muted-foreground"
+            }`}
+          >
+            {remaining}
+          </span>
+        </div>
+
         <div className="pointer-events-auto flex max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-border bg-surface/80 p-1.5 shadow-2xl backdrop-blur-xl">
           {EMOTIONS.map((e) => {
             const active = e.key === selected;
