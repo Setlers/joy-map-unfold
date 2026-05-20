@@ -78,13 +78,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content:
           "Drop an anonymous emotion anywhere on the world map. See what humanity is feeling, live.",
       },
-      { property: "og:title", content: "Feel the World" },
+      { property: "og:title", content: "Feel the World — anonymous emotion map" },
       {
         property: "og:description",
         content: "An anonymous, live world map of human emotion.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "Feel the World — anonymous emotion map" },
+      { name: "description", content: "Global Heartbeat visualizes anonymous emotional submissions on an interactive world map." },
+      { property: "og:description", content: "Global Heartbeat visualizes anonymous emotional submissions on an interactive world map." },
+      { name: "twitter:description", content: "Global Heartbeat visualizes anonymous emotional submissions on an interactive world map." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/44420e51-bfbf-46fd-a5d2-7c2a425de3e0/id-preview-734a5f57--7ee83a29-9011-45ca-bc8b-7ac447297a70.lovable.app-1779258864239.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/44420e51-bfbf-46fd-a5d2-7c2a425de3e0/id-preview-734a5f57--7ee83a29-9011-45ca-bc8b-7ac447297a70.lovable.app-1779258864239.png" },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
