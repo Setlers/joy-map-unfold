@@ -37,9 +37,9 @@ export function EmotionMap() {
 
       const map = L.map(containerRef.current, {
         center: [22, 10],
-        zoom: 2,
+        zoom: 3,
         minZoom: 2,
-        maxZoom: 7,
+        maxZoom: 18,
         worldCopyJump: true,
         zoomControl: true,
         attributionControl: true,
@@ -47,7 +47,7 @@ export function EmotionMap() {
       mapRef.current = map;
 
       L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
         {
           attribution:
             '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
