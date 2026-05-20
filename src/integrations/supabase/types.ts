@@ -14,7 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      emotions: {
+        Row: {
+          created_at: string
+          emotion: Database["public"]["Enums"]["emotion_type"]
+          id: string
+          lat: number
+          lng: number
+        }
+        Insert: {
+          created_at?: string
+          emotion: Database["public"]["Enums"]["emotion_type"]
+          id?: string
+          lat: number
+          lng: number
+        }
+        Update: {
+          created_at?: string
+          emotion?: Database["public"]["Enums"]["emotion_type"]
+          id?: string
+          lat?: number
+          lng?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +46,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      emotion_type: "joy" | "calm" | "sadness" | "anger" | "anxiety" | "hope"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +173,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      emotion_type: ["joy", "calm", "sadness", "anger", "anxiety", "hope"],
+    },
   },
 } as const
