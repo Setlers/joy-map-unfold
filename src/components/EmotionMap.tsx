@@ -82,24 +82,51 @@ export function EmotionMap() {
 
       // Click to drop an emotion
       map.on("click", async (e) => {
+        if (submittingRef.current) return;
         const { lat, lng } = e.latlng;
         const emotion = selectedRef.current;
-        const raw = messageRef.current.trim().slice(0, MAX_MESSAGE);
-        const payload = {
-          emotion,
-          lat,
-          lng: ((lng + 540) % 360) - 180,
-          message: raw.length > 0 ? raw : null,
-        };
-        const { error } = await supabase.from("emotions").insert(payload);
-        if (error) {
-          toast.error("Couldn't drop your feeling. Try again.");
-          console.error(error);
-        } else {
+        const raw = messageRef.current;
+
+        // Client-side rate limit (mirrors server)
+        const sinceLast = Date.now() - lastSubmitRef.current;
+        if (lastSubmitRef.current && sinceLast < 60_000) {
+          toast.message("Take a breath", {
+            description: `Try again in ${Math.ceil((60_000 - sinceLast) / 1000)}s.`,
+          });
+          return;
+        }
+
+        // Client-side moderation (mirrors server)
+        const check = moderateMessage(raw);
+        if (!check.ok) {
+          toast.message("A gentle nudge", { description: check.reason });
+          return;
+        }
+
+        submittingRef.current = true;
+        try {
+          const result = await submit({
+            data: {
+              emotion,
+              lat,
+              lng,
+              message: check.clean.length > 0 ? check.clean : null,
+            },
+          });
+          if (!result.ok) {
+            toast.message("A gentle nudge", { description: result.reason });
+            return;
+          }
+          lastSubmitRef.current = Date.now();
           toast.success(
             `${EMOTIONS_BY_KEY[emotion].emoji} ${EMOTIONS_BY_KEY[emotion].label} dropped`,
           );
           setMessage("");
+        } catch (err) {
+          console.error(err);
+          toast.error("Couldn't drop your feeling. Try again.");
+        } finally {
+          submittingRef.current = false;
         }
       });
 
