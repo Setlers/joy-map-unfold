@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type L from "leaflet";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { EMOTIONS, EMOTIONS_BY_KEY, type EmotionKey } from "@/lib/emotions";
+import { submitEmotion } from "@/lib/emotions.functions";
+import { moderateMessage, MAX_MESSAGE_LENGTH } from "@/lib/moderation";
 import { toast } from "sonner";
 
 interface EmotionRow {
@@ -13,7 +16,7 @@ interface EmotionRow {
   created_at: string;
 }
 
-const MAX_MESSAGE = 140;
+const MAX_MESSAGE = MAX_MESSAGE_LENGTH;
 
 function escapeHtml(s: string) {
   return s
