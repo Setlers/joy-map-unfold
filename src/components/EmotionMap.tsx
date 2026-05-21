@@ -32,6 +32,9 @@ export function EmotionMap() {
   const mapRef = useRef<L.Map | null>(null);
   const leafletRef = useRef<typeof L | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  const submittingRef = useRef(false);
+  const lastSubmitRef = useRef(0);
+  const submit = useServerFn(submitEmotion);
 
   const [selected, setSelected] = useState<EmotionKey>("joy");
   const selectedRef = useRef<EmotionKey>(selected);
