@@ -154,7 +154,15 @@
   height: 14px;
   border-radius: 9999px;
   position: relative;
-  box-shadow: 0 0 0 2px color-mix(in oklab, var(--background) 70%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--background) 70%, transparent),
+    0 0 14px currentColor;
+  animation: dot-in 700ms ease-out both;
+}
+@keyframes dot-in {
+  0%   { transform: scale(0.2); opacity: 0; }
+  60%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 .emotion-dot::after {
   content: "";
