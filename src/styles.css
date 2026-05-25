@@ -111,6 +111,10 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
     background-image:
       radial-gradient(ellipse at 20% 0%, color-mix(in oklab, var(--emotion-calm) 12%, transparent), transparent 60%),
       radial-gradient(ellipse at 90% 100%, color-mix(in oklab, var(--emotion-hope) 10%, transparent), transparent 55%);
