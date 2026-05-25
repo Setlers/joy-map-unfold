@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type L from "leaflet";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,15 @@ interface EmotionRow {
 
 const MAX_MESSAGE = MAX_MESSAGE_LENGTH;
 
+const MOOD_COPY: Record<EmotionKey, string> = {
+  joy: "The world feels joyful today.",
+  calm: "The world feels calm today.",
+  sadness: "The world feels tender today.",
+  anger: "The world feels restless today.",
+  anxiety: "The world feels anxious today.",
+  hope: "The world feels hopeful today.",
+};
+
 function escapeHtml(s: string) {
   return s
     .replace(/&/g, "&amp;")
@@ -27,11 +36,23 @@ function escapeHtml(s: string) {
     .replace(/'/g, "&#39;");
 }
 
+function approxRegion(lat: number, lng: number) {
+  const ns = lat >= 23 ? "Northern" : lat <= -23 ? "Southern" : "Equatorial";
+  let band = "Atlantic";
+  if (lng >= -30 && lng < 60) band = "Europe / Africa";
+  else if (lng >= 60 && lng < 150) band = "Asia";
+  else if (lng >= 150 || lng < -150) band = "Pacific";
+  else band = "Americas";
+  return `${ns} ${band}`;
+}
+
 export function EmotionMap() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const leafletRef = useRef<typeof L | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const heatLayerRef = useRef<any>(null);
   const submittingRef = useRef(false);
   const lastSubmitRef = useRef(0);
   const submit = useServerFn(submitEmotion);
@@ -48,7 +69,51 @@ export function EmotionMap() {
     messageRef.current = message;
   }, [message]);
 
-  const [count, setCount] = useState(0);
+  const [rows, setRows] = useState<EmotionRow[]>([]);
+  const [heatmap, setHeatmap] = useState(false);
+
+  // --- Global mood: most-shared emotion today ---
+  const mood = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const counts: Record<EmotionKey, number> = {
+      joy: 0, calm: 0, sadness: 0, anger: 0, anxiety: 0, hope: 0,
+    };
+    let total = 0;
+    for (const r of rows) {
+      if (new Date(r.created_at) >= start) {
+        counts[r.emotion] = (counts[r.emotion] ?? 0) + 1;
+        total++;
+      }
+    }
+    if (total === 0) return null;
+    let top: EmotionKey = "calm";
+    let max = -1;
+    for (const k of Object.keys(counts) as EmotionKey[]) {
+      if (counts[k] > max) { max = counts[k]; top = k; }
+    }
+    return { key: top, count: max, total };
+  }, [rows]);
+
+  // --- Whispers: rotating anonymous messages ---
+  const whispers = useMemo(
+    () => rows.filter((r) => r.message && r.message.trim().length > 0).slice(0, 80),
+    [rows],
+  );
+  const [whisperIdx, setWhisperIdx] = useState(0);
+  const [whisperVisible, setWhisperVisible] = useState(true);
+  useEffect(() => {
+    if (whispers.length === 0) return;
+    const interval = setInterval(() => {
+      setWhisperVisible(false);
+      setTimeout(() => {
+        setWhisperIdx((i) => (i + 1 + Math.floor(Math.random() * Math.max(1, whispers.length - 1))) % whispers.length);
+        setWhisperVisible(true);
+      }, 600);
+    }, 6500);
+    return () => clearInterval(interval);
+  }, [whispers.length]);
+  const currentWhisper = whispers[whisperIdx % Math.max(1, whispers.length)];
 
   // --- init Leaflet on mount (client only) ---
   useEffect(() => {
@@ -56,6 +121,7 @@ export function EmotionMap() {
 
     (async () => {
       const L = (await import("leaflet")).default;
+      await import("leaflet.heat");
       if (cancelled || !containerRef.current) return;
       leafletRef.current = L;
 
@@ -80,6 +146,8 @@ export function EmotionMap() {
         },
       ).addTo(map);
 
+      markersLayerRef.current = L.layerGroup().addTo(map);
+
       // Click to drop an emotion
       map.on("click", async (e) => {
         if (submittingRef.current) return;
@@ -87,7 +155,6 @@ export function EmotionMap() {
         const emotion = selectedRef.current;
         const raw = messageRef.current;
 
-        // Client-side rate limit (mirrors server)
         const sinceLast = Date.now() - lastSubmitRef.current;
         if (lastSubmitRef.current && sinceLast < 60_000) {
           toast.message("Take a breath", {
@@ -96,7 +163,6 @@ export function EmotionMap() {
           return;
         }
 
-        // Client-side moderation (mirrors server)
         const check = moderateMessage(raw);
         if (!check.ok) {
           toast.message("A gentle nudge", { description: check.reason });
@@ -138,8 +204,9 @@ export function EmotionMap() {
         .limit(1000);
 
       if (data) {
-        setCount(data.length);
-        for (const row of data as EmotionRow[]) addMarker(row, false);
+        const initial = data as EmotionRow[];
+        setRows(initial);
+        for (const row of initial) addMarker(row, false);
       }
 
       // Realtime
@@ -151,7 +218,7 @@ export function EmotionMap() {
           (payload) => {
             const row = payload.new as EmotionRow;
             addMarker(row, true);
-            setCount((c) => c + 1);
+            setRows((prev) => [row, ...prev].slice(0, 1000));
           },
         )
         .subscribe();
@@ -170,14 +237,55 @@ export function EmotionMap() {
       }
       mapRef.current = null;
       markersRef.current.clear();
+      markersLayerRef.current = null;
+      heatLayerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // --- Heatmap toggle ---
+  useEffect(() => {
+    const L = leafletRef.current as any;
+    const map = mapRef.current;
+    if (!L || !map) return;
+
+    if (heatmap) {
+      if (markersLayerRef.current && map.hasLayer(markersLayerRef.current)) {
+        map.removeLayer(markersLayerRef.current);
+      }
+      const points = rows.map((r) => [r.lat, r.lng, 0.6] as [number, number, number]);
+      if (heatLayerRef.current) {
+        heatLayerRef.current.setLatLngs(points);
+      } else {
+        heatLayerRef.current = L.heatLayer(points, {
+          radius: 28,
+          blur: 35,
+          maxZoom: 6,
+          minOpacity: 0.25,
+          gradient: {
+            0.2: "#5b6cff",
+            0.4: "#22d3a8",
+            0.6: "#f4c64f",
+            0.8: "#f08a3a",
+            1.0: "#ef4d4d",
+          },
+        }).addTo(map);
+      }
+    } else {
+      if (heatLayerRef.current && map.hasLayer(heatLayerRef.current)) {
+        map.removeLayer(heatLayerRef.current);
+      }
+      if (markersLayerRef.current && !map.hasLayer(markersLayerRef.current)) {
+        map.addLayer(markersLayerRef.current);
+      }
+    }
+  }, [heatmap, rows]);
+
   function addMarker(row: EmotionRow, isNew: boolean) {
     const L = leafletRef.current;
     const map = mapRef.current;
-    if (!L || !map) return;
+    const layer = markersLayerRef.current;
+    if (!L || !map || !layer) return;
     if (markersRef.current.has(row.id)) return;
 
     const meta = EMOTIONS_BY_KEY[row.emotion];
@@ -190,7 +298,7 @@ export function EmotionMap() {
       iconAnchor: [7, 7],
     });
 
-    const marker = L.marker([row.lat, row.lng], { icon, keyboard: false }).addTo(map);
+    const marker = L.marker([row.lat, row.lng], { icon, keyboard: false }).addTo(layer);
 
     const hasMessage = row.message && row.message.trim().length > 0;
     if (hasMessage) {
@@ -213,6 +321,7 @@ export function EmotionMap() {
   }
 
   const remaining = MAX_MESSAGE - message.length;
+  const moodMeta = mood ? EMOTIONS_BY_KEY[mood.key] : null;
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden">
@@ -222,7 +331,7 @@ export function EmotionMap() {
       <header className="pointer-events-none absolute inset-x-0 top-0 z-[400] flex flex-col items-start gap-1 p-5 sm:p-7">
         <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.18em] text-muted-foreground backdrop-blur-md">
           <span className="size-1.5 rounded-full bg-emotion-hope" />
-          Live · {count} feelings dropped
+          Live · {rows.length} feelings dropped
         </div>
         <h1 className="mt-2 max-w-xl text-3xl font-semibold leading-[1.05] sm:text-5xl">
           Feel the&nbsp;world.
@@ -230,7 +339,71 @@ export function EmotionMap() {
         <p className="max-w-md text-sm text-muted-foreground sm:text-base">
           Anonymous. Pick an emotion, optionally leave a short note, then tap the map.
         </p>
+
+        {/* Global Mood */}
+        {moodMeta && (
+          <div
+            key={moodMeta.key}
+            className="pointer-events-auto mt-3 inline-flex animate-fade-in items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1.5 text-xs text-foreground/90 backdrop-blur-md sm:text-sm"
+            style={{
+              boxShadow: `0 8px 30px -12px color-mix(in oklab, var(${moodMeta.cssVar}) 55%, transparent)`,
+            }}
+          >
+            <span
+              className="size-2 rounded-full"
+              style={{
+                background: `var(${moodMeta.cssVar})`,
+                boxShadow: `0 0 12px var(${moodMeta.cssVar})`,
+              }}
+            />
+            <span>{MOOD_COPY[moodMeta.key]}</span>
+            <span className="text-muted-foreground">· today</span>
+          </div>
+        )}
       </header>
+
+      {/* Heatmap toggle */}
+      <div className="pointer-events-auto absolute right-4 top-5 z-[400] sm:right-7 sm:top-7">
+        <button
+          type="button"
+          onClick={() => setHeatmap((v) => !v)}
+          aria-pressed={heatmap}
+          className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-foreground/85 backdrop-blur-md transition-colors hover:bg-accent"
+        >
+          <span
+            className="size-1.5 rounded-full"
+            style={{
+              background: heatmap ? "var(--emotion-anxiety)" : "var(--emotion-calm)",
+              boxShadow: heatmap
+                ? "0 0 10px var(--emotion-anxiety)"
+                : "0 0 10px var(--emotion-calm)",
+            }}
+          />
+          {heatmap ? "Heatmap" : "Points"}
+        </button>
+      </div>
+
+      {/* Emotional Whispers */}
+      {currentWhisper && (
+        <div className="pointer-events-none absolute bottom-32 right-4 z-[400] max-w-[min(320px,calc(100vw-2rem))] sm:bottom-28 sm:right-7">
+          <div
+            className={`whisper-card pointer-events-auto rounded-2xl border border-border bg-surface/75 p-3.5 shadow-2xl backdrop-blur-xl transition-all duration-700 ${
+              whisperVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+            }`}
+          >
+            <div className="mb-1.5 flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+              <span className="text-base leading-none">
+                {EMOTIONS_BY_KEY[currentWhisper.emotion].emoji}
+              </span>
+              <span>{approxRegion(currentWhisper.lat, currentWhisper.lng)}</span>
+              <span className="opacity-50">· whisper</span>
+            </div>
+            <p className="text-sm leading-snug text-foreground/95">
+              &ldquo;{currentWhisper.message}&rdquo;
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Composer + Emotion picker */}
       <div className="absolute inset-x-0 bottom-0 z-[400] flex flex-col items-center gap-2 p-4 sm:p-6">
