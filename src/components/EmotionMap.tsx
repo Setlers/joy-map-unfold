@@ -8,12 +8,15 @@ import { moderateMessage, MAX_MESSAGE_LENGTH } from "@/lib/moderation";
 import { toast } from "sonner";
 
 interface EmotionRow {
-  id: string;
   emotion: EmotionKey;
   lat: number;
   lng: number;
   message: string | null;
   created_at: string;
+}
+
+function rowKey(r: EmotionRow) {
+  return `${r.created_at}|${r.emotion}|${r.lat}|${r.lng}|${r.message ?? ""}`;
 }
 
 const MAX_MESSAGE = MAX_MESSAGE_LENGTH;
