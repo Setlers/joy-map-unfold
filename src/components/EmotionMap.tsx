@@ -5,6 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { EMOTIONS, EMOTIONS_BY_KEY, type EmotionKey } from "@/lib/emotions";
 import { submitEmotion } from "@/lib/emotions.functions";
 import { moderateMessage, MAX_MESSAGE_LENGTH } from "@/lib/moderation";
+import { useI18n } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { toast } from "sonner";
 
 interface EmotionRow {
@@ -20,15 +22,6 @@ function rowKey(r: EmotionRow) {
 }
 
 const MAX_MESSAGE = MAX_MESSAGE_LENGTH;
-
-const MOOD_COPY: Record<EmotionKey, string> = {
-  joy: "The world feels joyful today.",
-  calm: "The world feels calm today.",
-  sadness: "The world feels tender today.",
-  anger: "The world feels restless today.",
-  anxiety: "The world feels anxious today.",
-  hope: "The world feels hopeful today.",
-};
 
 function escapeHtml(s: string) {
   return s
@@ -50,6 +43,12 @@ function approxRegion(lat: number, lng: number) {
 }
 
 export function EmotionMap() {
+  const { t, lang } = useI18n();
+  const tRef = useRef(t);
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
+
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const leafletRef = useRef<typeof L | null>(null);
@@ -154,21 +153,26 @@ export function EmotionMap() {
       // Click to drop an emotion
       map.on("click", async (e) => {
         if (submittingRef.current) return;
+        const tt = tRef.current;
         const { lat, lng } = e.latlng;
         const emotion = selectedRef.current;
         const raw = messageRef.current;
 
         const sinceLast = Date.now() - lastSubmitRef.current;
         if (lastSubmitRef.current && sinceLast < 60_000) {
-          toast.message("Take a breath", {
-            description: `Try again in ${Math.ceil((60_000 - sinceLast) / 1000)}s.`,
+          toast.message(tt("toast.breath.title"), {
+            description: tt("toast.breath.desc", {
+              sec: Math.ceil((60_000 - sinceLast) / 1000),
+            }),
           });
           return;
         }
 
         const check = moderateMessage(raw);
         if (!check.ok) {
-          toast.message("A gentle nudge", { description: check.reason });
+          toast.message(tt("toast.nudge.title"), {
+            description: tt(`mod.${check.code}`, check.params ?? {}),
+          });
           return;
         }
 
@@ -183,17 +187,20 @@ export function EmotionMap() {
             },
           });
           if (!result.ok) {
-            toast.message("A gentle nudge", { description: result.reason });
+            toast.message(tt("toast.nudge.title"), {
+              description: tt(`mod.${result.code}`, result.params ?? {}),
+            });
             return;
           }
           lastSubmitRef.current = Date.now();
+          const meta = EMOTIONS_BY_KEY[emotion];
           toast.success(
-            `${EMOTIONS_BY_KEY[emotion].emoji} ${EMOTIONS_BY_KEY[emotion].label} dropped`,
+            tt("toast.dropped", { emoji: meta.emoji, label: tt(`emotion.${emotion}`) }),
           );
           setMessage("");
         } catch (err) {
           console.error(err);
-          toast.error("Couldn't drop your feeling. Try again.");
+          toast.error(tt("toast.error"));
         } finally {
           submittingRef.current = false;
         }
@@ -253,6 +260,25 @@ export function EmotionMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // --- Re-label existing markers when language changes ---
+  useEffect(() => {
+    const tt = tRef.current;
+    markersRef.current.forEach((marker) => {
+      const row = (marker as unknown as { __row?: EmotionRow }).__row;
+      if (!row) return;
+      const meta = EMOTIONS_BY_KEY[row.emotion];
+      const hasMessage = row.message && row.message.trim().length > 0;
+      const label = tt(`emotion.${row.emotion}`);
+      marker.unbindTooltip();
+      marker.bindTooltip(
+        hasMessage
+          ? tt("tooltip.read", { emoji: meta.emoji, label })
+          : tt("tooltip.simple", { emoji: meta.emoji, label }),
+        { direction: "top", offset: [0, -8], opacity: 0.95, className: "emotion-tooltip" },
+      );
+    });
+  }, [lang]);
+
   // --- Heatmap toggle ---
   useEffect(() => {
     const L = leafletRef.current as any;
@@ -301,26 +327,31 @@ export function EmotionMap() {
 
     const meta = EMOTIONS_BY_KEY[row.emotion];
     if (!meta) return;
+    const tt = tRef.current;
+    const label = tt(`emotion.${row.emotion}`);
 
     const icon = L.divIcon({
       className: "",
-      html: `<div class="emotion-dot ${isNew ? "just-added" : ""}" style="background: var(${meta.cssVar}); color: var(${meta.cssVar});" title="${meta.label}"></div>`,
+      html: `<div class="emotion-dot ${isNew ? "just-added" : ""}" style="background: var(${meta.cssVar}); color: var(${meta.cssVar});" title="${label}"></div>`,
       iconSize: [14, 14],
       iconAnchor: [7, 7],
     });
 
     const marker = L.marker([row.lat, row.lng], { icon, keyboard: false }).addTo(layer);
+    (marker as unknown as { __row: EmotionRow }).__row = row;
 
     const hasMessage = row.message && row.message.trim().length > 0;
     if (hasMessage) {
       const safe = escapeHtml(row.message!.trim());
       marker.bindPopup(
-        `<div class="emotion-popup"><div class="emotion-popup-head"><span class="text-base">${meta.emoji}</span><span class="emotion-popup-label">${meta.label}</span></div><p class="emotion-popup-body">${safe}</p></div>`,
+        `<div class="emotion-popup"><div class="emotion-popup-head"><span class="text-base">${meta.emoji}</span><span class="emotion-popup-label">${label}</span></div><p class="emotion-popup-body">${safe}</p></div>`,
         { closeButton: true, className: "emotion-popup-wrapper" },
       );
     }
     marker.bindTooltip(
-      hasMessage ? `${meta.emoji} ${meta.label} · tap to read` : `${meta.emoji} ${meta.label}`,
+      hasMessage
+        ? tt("tooltip.read", { emoji: meta.emoji, label })
+        : tt("tooltip.simple", { emoji: meta.emoji, label }),
       {
         direction: "top",
         offset: [0, -8],
@@ -342,19 +373,19 @@ export function EmotionMap() {
       <header className="pointer-events-none absolute inset-x-0 top-0 z-[400] flex flex-col items-start gap-1 p-5 sm:p-7">
         <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.18em] text-muted-foreground backdrop-blur-md">
           <span className="size-1.5 rounded-full bg-emotion-hope" />
-          Live · {rows.length} feelings dropped
+          {t("live.feelings", { count: rows.length })}
         </div>
         <h1 className="mt-2 max-w-xl text-3xl font-semibold leading-[1.05] sm:text-5xl">
-          Feel the&nbsp;world.
+          {t("hero.title")}
         </h1>
         <p className="max-w-md text-sm text-muted-foreground sm:text-base">
-          Anonymous. Pick an emotion, optionally leave a short note, then tap the map.
+          {t("hero.subtitle")}
         </p>
 
         {/* Global Mood */}
         {moodMeta && (
           <div
-            key={moodMeta.key}
+            key={`${moodMeta.key}-${lang}`}
             className="pointer-events-auto mt-3 inline-flex animate-fade-in items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1.5 text-xs text-foreground/90 backdrop-blur-md sm:text-sm"
             style={{
               boxShadow: `0 8px 30px -12px color-mix(in oklab, var(${moodMeta.cssVar}) 55%, transparent)`,
@@ -367,14 +398,15 @@ export function EmotionMap() {
                 boxShadow: `0 0 12px var(${moodMeta.cssVar})`,
               }}
             />
-            <span>{MOOD_COPY[moodMeta.key]}</span>
-            <span className="text-muted-foreground">· today</span>
+            <span>{t(`mood.${moodMeta.key}`)}</span>
+            <span className="text-muted-foreground">{t("mood.today")}</span>
           </div>
         )}
       </header>
 
-      {/* Heatmap toggle */}
-      <div className="pointer-events-auto absolute right-4 top-5 z-[400] sm:right-7 sm:top-7">
+      {/* Top-right controls: language + heatmap toggle */}
+      <div className="pointer-events-auto absolute right-4 top-5 z-[400] flex flex-col items-end gap-2 sm:right-7 sm:top-7">
+        <LanguageSwitcher />
         <button
           type="button"
           onClick={() => setHeatmap((v) => !v)}
@@ -390,7 +422,7 @@ export function EmotionMap() {
                 : "0 0 10px var(--emotion-calm)",
             }}
           />
-          {heatmap ? "Heatmap" : "Points"}
+          {heatmap ? t("toggle.heatmap") : t("toggle.points")}
         </button>
       </div>
 
@@ -407,7 +439,7 @@ export function EmotionMap() {
                 {EMOTIONS_BY_KEY[currentWhisper.emotion].emoji}
               </span>
               <span>{approxRegion(currentWhisper.lat, currentWhisper.lng)}</span>
-              <span className="opacity-50">· whisper</span>
+              <span className="opacity-50">{t("whisper.label")}</span>
             </div>
             <p className="text-sm leading-snug text-foreground/95">
               &ldquo;{currentWhisper.message}&rdquo;
@@ -424,9 +456,9 @@ export function EmotionMap() {
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value.slice(0, MAX_MESSAGE))}
-            placeholder="Say something (optional, anonymous)…"
+            placeholder={t("composer.placeholder")}
             maxLength={MAX_MESSAGE}
-            aria-label="Optional anonymous message"
+            aria-label={t("composer.aria")}
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
           <span
@@ -463,7 +495,7 @@ export function EmotionMap() {
                 }
               >
                 <span className="text-lg leading-none">{e.emoji}</span>
-                <span className="hidden sm:inline">{e.label}</span>
+                <span className="hidden sm:inline">{t(`emotion.${e.key}`)}</span>
               </button>
             );
           })}
