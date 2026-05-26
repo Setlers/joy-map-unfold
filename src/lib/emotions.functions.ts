@@ -54,11 +54,14 @@ export const submitEmotion = createServerFn({ method: "POST" })
       }
     }
 
-    // 4) Insert
+    // 4) Insert — round coords to ~11km for privacy (also enforced by DB trigger)
+    const roundedLat = Math.round(data.lat * 10) / 10;
+    const normLng = ((data.lng + 540) % 360) - 180;
+    const roundedLng = Math.round(normLng * 10) / 10;
     const { error } = await supabaseAdmin.from("emotions").insert({
       emotion: data.emotion,
-      lat: data.lat,
-      lng: ((data.lng + 540) % 360) - 180,
+      lat: roundedLat,
+      lng: roundedLng,
       message: cleanMessage,
     });
 
