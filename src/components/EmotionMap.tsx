@@ -296,7 +296,8 @@ export function EmotionMap() {
     const map = mapRef.current;
     const layer = markersLayerRef.current;
     if (!L || !map || !layer) return;
-    if (markersRef.current.has(row.id)) return;
+    const key = rowKey(row);
+    if (markersRef.current.has(key)) return;
 
     const meta = EMOTIONS_BY_KEY[row.emotion];
     if (!meta) return;
