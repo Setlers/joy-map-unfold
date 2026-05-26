@@ -202,7 +202,7 @@ export function EmotionMap() {
       // Initial load
       const { data } = await supabase
         .from("emotions")
-        .select("id, emotion, lat, lng, message, created_at")
+        .select("emotion, lat, lng, message, created_at")
         .order("created_at", { ascending: false })
         .limit(1000);
 
