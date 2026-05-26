@@ -75,7 +75,11 @@ export const submitEmotion = createServerFn({ method: "POST" })
 
     if (error) {
       console.error("[submitEmotion] insert failed", error);
-      return { ok: false as const, reason: "Couldn't save your feeling. Try again." };
+      return {
+        ok: false as const,
+        code: "save_failed" as const,
+        reason: "Couldn't save your feeling. Try again.",
+      };
     }
 
     // 5) Update rate-limit cookie
