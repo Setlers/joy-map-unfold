@@ -8,12 +8,15 @@ import { moderateMessage, MAX_MESSAGE_LENGTH } from "@/lib/moderation";
 import { toast } from "sonner";
 
 interface EmotionRow {
-  id: string;
   emotion: EmotionKey;
   lat: number;
   lng: number;
   message: string | null;
   created_at: string;
+}
+
+function rowKey(r: EmotionRow) {
+  return `${r.created_at}|${r.emotion}|${r.lat}|${r.lng}|${r.message ?? ""}`;
 }
 
 const MAX_MESSAGE = MAX_MESSAGE_LENGTH;
@@ -199,7 +202,7 @@ export function EmotionMap() {
       // Initial load
       const { data } = await supabase
         .from("emotions")
-        .select("id, emotion, lat, lng, message, created_at")
+        .select("emotion, lat, lng, message, created_at")
         .order("created_at", { ascending: false })
         .limit(1000);
 
@@ -216,7 +219,14 @@ export function EmotionMap() {
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "emotions" },
           (payload) => {
-            const row = payload.new as EmotionRow;
+            const raw = payload.new as Record<string, unknown>;
+            const row: EmotionRow = {
+              emotion: raw.emotion as EmotionKey,
+              lat: raw.lat as number,
+              lng: raw.lng as number,
+              message: (raw.message as string | null) ?? null,
+              created_at: raw.created_at as string,
+            };
             addMarker(row, true);
             setRows((prev) => [row, ...prev].slice(0, 1000));
           },
@@ -286,7 +296,8 @@ export function EmotionMap() {
     const map = mapRef.current;
     const layer = markersLayerRef.current;
     if (!L || !map || !layer) return;
-    if (markersRef.current.has(row.id)) return;
+    const key = rowKey(row);
+    if (markersRef.current.has(key)) return;
 
     const meta = EMOTIONS_BY_KEY[row.emotion];
     if (!meta) return;
@@ -317,7 +328,7 @@ export function EmotionMap() {
         className: "emotion-tooltip",
       },
     );
-    markersRef.current.set(row.id, marker);
+    markersRef.current.set(key, marker);
   }
 
   const remaining = MAX_MESSAGE - message.length;
