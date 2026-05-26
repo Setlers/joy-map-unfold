@@ -9,7 +9,6 @@ import {
 } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
-import { LanguageProvider } from "@/lib/i18n";
 
 function NotFoundComponent() {
   return (
@@ -103,8 +102,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "Global Heartbeat visualizes anonymous emotional submissions on an interactive world map." },
       { property: "og:description", content: "Global Heartbeat visualizes anonymous emotional submissions on an interactive world map." },
       { name: "twitter:description", content: "Global Heartbeat visualizes anonymous emotional submissions on an interactive world map." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/44420e51-bfbf-46fd-a5d2-7c2a425de3e0/id-preview-734a5f57--7ee83a29-9011-45ca-bc8b-7ac447297a70.lovable.app-1779258864239.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/44420e51-bfbf-46fd-a5d2-7c2a425de3e0/id-preview-734a5f57--7ee83a29-9011-45ca-bc8b-7ac447297a70.lovable.app-1779258864239.png" },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/818a4ee7-5a1f-4764-91c2-c17af1774b42" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/818a4ee7-5a1f-4764-91c2-c17af1774b42" },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -145,9 +144,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <LanguageProvider>
-        <Outlet />
-      </LanguageProvider>
+      <Outlet />
     </QueryClientProvider>
   );
 }
