@@ -96,26 +96,48 @@ function containsBlockedWord(text: string): boolean {
   });
 }
 
+export type ModerationCode =
+  | "too_long"
+  | "no_links"
+  | "profanity"
+  | "spam"
+  | "rate"
+  | "duplicate"
+  | "save_failed";
+
 export type ModerationResult =
   | { ok: true; clean: string }
-  | { ok: false; reason: string };
+  | { ok: false; code: ModerationCode; reason: string; params?: Record<string, string | number> };
 
-/** Validates a message. Returns either a sanitized message or a friendly reason. */
+/** Validates a message. Returns either a sanitized message or a friendly reason + code. */
 export function moderateMessage(input: string | null | undefined): ModerationResult {
   const trimmed = (input ?? "").trim();
   if (trimmed.length === 0) return { ok: true, clean: "" }; // empty is allowed
 
   if (trimmed.length > MAX_MESSAGE_LENGTH) {
-    return { ok: false, reason: `Please keep it under ${MAX_MESSAGE_LENGTH} characters.` };
+    return {
+      ok: false,
+      code: "too_long",
+      reason: `Please keep it under ${MAX_MESSAGE_LENGTH} characters.`,
+      params: { max: MAX_MESSAGE_LENGTH },
+    };
   }
   if (URL_REGEX.test(trimmed)) {
-    return { ok: false, reason: "Links aren't allowed — share a feeling, not a URL." };
+    return {
+      ok: false,
+      code: "no_links",
+      reason: "Links aren't allowed — share a feeling, not a URL.",
+    };
   }
   if (containsBlockedWord(trimmed)) {
-    return { ok: false, reason: "Let's keep it kind. Try rephrasing without harsh words." };
+    return {
+      ok: false,
+      code: "profanity",
+      reason: "Let's keep it kind. Try rephrasing without harsh words.",
+    };
   }
   if (isSpammy(trimmed)) {
-    return { ok: false, reason: "That looks like spam. Try a calmer note." };
+    return { ok: false, code: "spam", reason: "That looks like spam. Try a calmer note." };
   }
 
   return { ok: true, clean: trimmed };
