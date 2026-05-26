@@ -26,14 +26,21 @@ export const submitEmotion = createServerFn({ method: "POST" })
       const wait = Math.ceil((RATE_LIMIT_MS - (now - last)) / 1000);
       return {
         ok: false as const,
+        code: "rate" as const,
         reason: `Take a breath — try again in ${wait}s.`,
+        params: { sec: wait },
       };
     }
 
     // 2) Moderate message (if any)
     const moderation = moderateMessage(data.message ?? "");
     if (!moderation.ok) {
-      return { ok: false as const, reason: moderation.reason };
+      return {
+        ok: false as const,
+        code: moderation.code,
+        reason: moderation.reason,
+        params: moderation.params,
+      };
     }
     const cleanMessage = moderation.clean.length > 0 ? moderation.clean : null;
 
@@ -49,6 +56,7 @@ export const submitEmotion = createServerFn({ method: "POST" })
       if (dupes && dupes.length > 0) {
         return {
           ok: false as const,
+          code: "duplicate" as const,
           reason: "Someone just shared that exact thought. Try your own words.",
         };
       }
@@ -67,7 +75,11 @@ export const submitEmotion = createServerFn({ method: "POST" })
 
     if (error) {
       console.error("[submitEmotion] insert failed", error);
-      return { ok: false as const, reason: "Couldn't save your feeling. Try again." };
+      return {
+        ok: false as const,
+        code: "save_failed" as const,
+        reason: "Couldn't save your feeling. Try again.",
+      };
     }
 
     // 5) Update rate-limit cookie
