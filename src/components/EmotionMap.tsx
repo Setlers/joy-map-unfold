@@ -328,7 +328,7 @@ export function EmotionMap() {
         className: "emotion-tooltip",
       },
     );
-    markersRef.current.set(row.id, marker);
+    markersRef.current.set(key, marker);
   }
 
   const remaining = MAX_MESSAGE - message.length;
