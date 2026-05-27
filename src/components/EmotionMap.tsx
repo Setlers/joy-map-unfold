@@ -225,10 +225,12 @@ export function EmotionMap() {
         }
       });
 
-      // Initial load
+      // Initial load — last 24h only
+      const since = new Date(Date.now() - MAX_AGE_MS).toISOString();
       const { data } = await supabase
         .from("emotions")
         .select("emotion, lat, lng, message, created_at")
+        .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(1000);
 
