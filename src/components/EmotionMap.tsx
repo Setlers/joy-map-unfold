@@ -386,6 +386,9 @@ export function EmotionMap() {
 
     const marker = L.marker([row.lat, row.lng], { icon, keyboard: false }).addTo(layer);
     (marker as unknown as { __row: EmotionRow }).__row = row;
+    const op = ageOpacity(row.created_at, Date.now());
+    if (op <= 0) return;
+    marker.setOpacity(op);
 
     const hasMessage = row.message && row.message.trim().length > 0;
     if (hasMessage) {
