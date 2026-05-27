@@ -300,7 +300,31 @@ export function EmotionMap() {
     });
   }, [lang]);
 
-  // --- Heatmap toggle ---
+  // --- Prune stale markers and fade aging ones each tick ---
+  useEffect(() => {
+    const layer = markersLayerRef.current;
+    if (!layer) return;
+    const toRemove: string[] = [];
+    markersRef.current.forEach((marker, key) => {
+      const row = (marker as unknown as { __row?: EmotionRow }).__row;
+      if (!row) return;
+      const op = ageOpacity(row.created_at, nowTs);
+      if (op <= 0) {
+        layer.removeLayer(marker);
+        toRemove.push(key);
+      } else {
+        marker.setOpacity(op);
+      }
+    });
+    for (const k of toRemove) markersRef.current.delete(k);
+    if (toRemove.length > 0) {
+      setRows((prev) =>
+        prev.filter((r) => nowTs - new Date(r.created_at).getTime() < MAX_AGE_MS),
+      );
+    }
+  }, [nowTs]);
+
+  // --- Heatmap toggle (recent only, weighted by freshness) ---
   useEffect(() => {
     const L = leafletRef.current as any;
     const map = mapRef.current;
@@ -310,7 +334,9 @@ export function EmotionMap() {
       if (markersLayerRef.current && map.hasLayer(markersLayerRef.current)) {
         map.removeLayer(markersLayerRef.current);
       }
-      const points = rows.map((r) => [r.lat, r.lng, 0.6] as [number, number, number]);
+      const points = freshRows.map(
+        (r) => [r.lat, r.lng, ageOpacity(r.created_at, nowTs)] as [number, number, number],
+      );
       if (heatLayerRef.current) {
         heatLayerRef.current.setLatLngs(points);
       } else {
@@ -336,7 +362,7 @@ export function EmotionMap() {
         map.addLayer(markersLayerRef.current);
       }
     }
-  }, [heatmap, rows]);
+  }, [heatmap, freshRows, nowTs]);
 
   function addMarker(row: EmotionRow, isNew: boolean) {
     const L = leafletRef.current;
