@@ -22,6 +22,16 @@ function rowKey(r: EmotionRow) {
 }
 
 const MAX_MESSAGE = MAX_MESSAGE_LENGTH;
+const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
+const MIN_OPACITY = 0.2;
+
+function ageOpacity(createdAt: string, now: number) {
+  const age = now - new Date(createdAt).getTime();
+  if (age <= 0) return 1;
+  if (age >= MAX_AGE_MS) return 0;
+  // Linear fade from 1 (fresh) → MIN_OPACITY (almost 24h)
+  return MIN_OPACITY + (1 - MIN_OPACITY) * (1 - age / MAX_AGE_MS);
+}
 
 function escapeHtml(s: string) {
   return s
