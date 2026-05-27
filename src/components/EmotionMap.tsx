@@ -83,20 +83,29 @@ export function EmotionMap() {
 
   const [rows, setRows] = useState<EmotionRow[]>([]);
   const [heatmap, setHeatmap] = useState(false);
+  const [nowTs, setNowTs] = useState(() => Date.now());
 
-  // --- Global mood: most-shared emotion today ---
+  // Tick every 60s to re-evaluate freshness, fade markers, prune stale ones
+  useEffect(() => {
+    const id = setInterval(() => setNowTs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // --- Only last 24h ---
+  const freshRows = useMemo(
+    () => rows.filter((r) => nowTs - new Date(r.created_at).getTime() < MAX_AGE_MS),
+    [rows, nowTs],
+  );
+
+  // --- Global mood: most-shared emotion in the last 24h ---
   const mood = useMemo(() => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
     const counts: Record<EmotionKey, number> = {
       joy: 0, calm: 0, sadness: 0, anger: 0, anxiety: 0, hope: 0,
     };
     let total = 0;
-    for (const r of rows) {
-      if (new Date(r.created_at) >= start) {
-        counts[r.emotion] = (counts[r.emotion] ?? 0) + 1;
-        total++;
-      }
+    for (const r of freshRows) {
+      counts[r.emotion] = (counts[r.emotion] ?? 0) + 1;
+      total++;
     }
     if (total === 0) return null;
     let top: EmotionKey = "calm";
@@ -105,12 +114,12 @@ export function EmotionMap() {
       if (counts[k] > max) { max = counts[k]; top = k; }
     }
     return { key: top, count: max, total };
-  }, [rows]);
+  }, [freshRows]);
 
-  // --- Whispers: rotating anonymous messages ---
+  // --- Whispers: rotating anonymous messages (fresh only) ---
   const whispers = useMemo(
-    () => rows.filter((r) => r.message && r.message.trim().length > 0).slice(0, 80),
-    [rows],
+    () => freshRows.filter((r) => r.message && r.message.trim().length > 0).slice(0, 80),
+    [freshRows],
   );
   const [whisperIdx, setWhisperIdx] = useState(0);
   const [whisperVisible, setWhisperVisible] = useState(true);
