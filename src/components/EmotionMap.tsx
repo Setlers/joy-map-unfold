@@ -423,7 +423,7 @@ export function EmotionMap() {
       <header className="pointer-events-none absolute inset-x-0 top-0 z-[400] flex flex-col items-start gap-1 p-5 sm:p-7">
         <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.18em] text-muted-foreground backdrop-blur-md">
           <span className="size-1.5 rounded-full bg-emotion-hope" />
-          {t("live.feelings", { count: rows.length })}
+          {t("live.feelings", { count: freshRows.length })}
         </div>
         <h1 className="mt-2 max-w-xl text-3xl font-semibold leading-[1.05] sm:text-5xl">
           {t("hero.title")}
