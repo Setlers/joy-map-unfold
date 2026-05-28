@@ -22,15 +22,29 @@ function rowKey(r: EmotionRow) {
 }
 
 const MAX_MESSAGE = MAX_MESSAGE_LENGTH;
-const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
 const MIN_OPACITY = 0.2;
 
-function ageOpacity(createdAt: string, now: number) {
+type RangeKey = "live" | "today" | "week" | "all";
+
+const RANGES: { key: RangeKey; ms: number }[] = [
+  { key: "live", ms: 60 * 60 * 1000 },
+  { key: "today", ms: 24 * 60 * 60 * 1000 },
+  { key: "week", ms: 7 * 24 * 60 * 60 * 1000 },
+  { key: "all", ms: Number.POSITIVE_INFINITY },
+];
+
+const RANGE_BY_KEY: Record<RangeKey, number> = Object.fromEntries(
+  RANGES.map((r) => [r.key, r.ms]),
+) as Record<RangeKey, number>;
+
+const RANGE_STORAGE = "range";
+
+function ageOpacity(createdAt: string, now: number, windowMs: number) {
+  if (!isFinite(windowMs)) return 1;
   const age = now - new Date(createdAt).getTime();
   if (age <= 0) return 1;
-  if (age >= MAX_AGE_MS) return 0;
-  // Linear fade from 1 (fresh) → MIN_OPACITY (almost 24h)
-  return MIN_OPACITY + (1 - MIN_OPACITY) * (1 - age / MAX_AGE_MS);
+  if (age >= windowMs) return 0;
+  return MIN_OPACITY + (1 - MIN_OPACITY) * (1 - age / windowMs);
 }
 
 function escapeHtml(s: string) {
@@ -67,6 +81,7 @@ export function EmotionMap() {
   const heatLayerRef = useRef<any>(null);
   const submittingRef = useRef(false);
   const lastSubmitRef = useRef(0);
+  const newKeysRef = useRef<Set<string>>(new Set());
   const submit = useServerFn(submitEmotion);
 
   const [selected, setSelected] = useState<EmotionKey>("joy");
@@ -83,7 +98,28 @@ export function EmotionMap() {
 
   const [rows, setRows] = useState<EmotionRow[]>([]);
   const [heatmap, setHeatmap] = useState(false);
+  const [range, setRangeState] = useState<RangeKey>("today");
+  const windowMs = RANGE_BY_KEY[range];
   const [nowTs, setNowTs] = useState(() => Date.now());
+
+  // Hydrate range from storage on client (avoid SSR mismatch).
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(RANGE_STORAGE) as RangeKey | null;
+      if (stored && stored in RANGE_BY_KEY) setRangeState(stored);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const setRange = (r: RangeKey) => {
+    setRangeState(r);
+    try {
+      localStorage.setItem(RANGE_STORAGE, r);
+    } catch {
+      /* ignore */
+    }
+  };
 
   // Tick every 60s to re-evaluate freshness, fade markers, prune stale ones
   useEffect(() => {
@@ -91,13 +127,13 @@ export function EmotionMap() {
     return () => clearInterval(id);
   }, []);
 
-  // --- Only last 24h ---
-  const freshRows = useMemo(
-    () => rows.filter((r) => nowTs - new Date(r.created_at).getTime() < MAX_AGE_MS),
-    [rows, nowTs],
-  );
+  // Filter to selected window
+  const freshRows = useMemo(() => {
+    if (!isFinite(windowMs)) return rows;
+    return rows.filter((r) => nowTs - new Date(r.created_at).getTime() < windowMs);
+  }, [rows, nowTs, windowMs]);
 
-  // --- Global mood: most-shared emotion in the last 24h ---
+  // Global mood within current window
   const mood = useMemo(() => {
     const counts: Record<EmotionKey, number> = {
       joy: 0, calm: 0, sadness: 0, anger: 0, anxiety: 0, hope: 0,
@@ -116,7 +152,7 @@ export function EmotionMap() {
     return { key: top, count: max, total };
   }, [freshRows]);
 
-  // --- Whispers: rotating anonymous messages (fresh only) ---
+  // Whispers within window
   const whispers = useMemo(
     () => freshRows.filter((r) => r.message && r.message.trim().length > 0).slice(0, 80),
     [freshRows],
@@ -225,22 +261,7 @@ export function EmotionMap() {
         }
       });
 
-      // Initial load — last 24h only
-      const since = new Date(Date.now() - MAX_AGE_MS).toISOString();
-      const { data } = await supabase
-        .from("emotions")
-        .select("emotion, lat, lng, message, created_at")
-        .gte("created_at", since)
-        .order("created_at", { ascending: false })
-        .limit(1000);
-
-      if (data) {
-        const initial = data as EmotionRow[];
-        setRows(initial);
-        for (const row of initial) addMarker(row, false);
-      }
-
-      // Realtime
+      // Realtime — always ingest into rows; the window filter decides what renders.
       const channel = supabase
         .channel("emotions-feed")
         .on(
@@ -255,8 +276,12 @@ export function EmotionMap() {
               message: (raw.message as string | null) ?? null,
               created_at: raw.created_at as string,
             };
-            addMarker(row, true);
-            setRows((prev) => [row, ...prev].slice(0, 1000));
+            newKeysRef.current.add(rowKey(row));
+            setRows((prev) => {
+              const k = rowKey(row);
+              if (prev.some((p) => rowKey(p) === k)) return prev;
+              return [row, ...prev].slice(0, 5000);
+            });
           },
         )
         .subscribe();
@@ -281,50 +306,73 @@ export function EmotionMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Re-label existing markers when language changes ---
+  // --- Re-fetch from DB when range changes ---
   useEffect(() => {
-    const tt = tRef.current;
-    markersRef.current.forEach((marker) => {
-      const row = (marker as unknown as { __row?: EmotionRow }).__row;
-      if (!row) return;
-      const meta = EMOTIONS_BY_KEY[row.emotion];
-      const hasMessage = row.message && row.message.trim().length > 0;
-      const label = tt(`emotion.${row.emotion}`);
-      marker.unbindTooltip();
-      marker.bindTooltip(
-        hasMessage
-          ? tt("tooltip.read", { emoji: meta.emoji, label })
-          : tt("tooltip.simple", { emoji: meta.emoji, label }),
-        { direction: "top", offset: [0, -8], opacity: 0.95, className: "emotion-tooltip" },
-      );
-    });
-  }, [lang]);
+    let cancelled = false;
+    (async () => {
+      let query = supabase
+        .from("emotions")
+        .select("emotion, lat, lng, message, created_at")
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      if (isFinite(windowMs)) {
+        query = query.gte(
+          "created_at",
+          new Date(Date.now() - windowMs).toISOString(),
+        );
+      }
+      const { data } = await query;
+      if (cancelled || !data) return;
+      setRows((prev) => {
+        const seen = new Set(prev.map(rowKey));
+        const merged = [...prev];
+        for (const r of data as EmotionRow[]) {
+          const k = rowKey(r);
+          if (!seen.has(k)) {
+            seen.add(k);
+            merged.push(r);
+          }
+        }
+        merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+        return merged.slice(0, 5000);
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [range, windowMs]);
 
-  // --- Prune stale markers and fade aging ones each tick ---
+  // --- Sync markers to freshRows + update opacity / labels ---
   useEffect(() => {
     const layer = markersLayerRef.current;
     if (!layer) return;
+    const want = new Set(freshRows.map(rowKey));
+
+    // Remove markers outside the window
     const toRemove: string[] = [];
     markersRef.current.forEach((marker, key) => {
-      const row = (marker as unknown as { __row?: EmotionRow }).__row;
-      if (!row) return;
-      const op = ageOpacity(row.created_at, nowTs);
-      if (op <= 0) {
+      if (!want.has(key)) {
         layer.removeLayer(marker);
         toRemove.push(key);
-      } else {
-        marker.setOpacity(op);
       }
     });
     for (const k of toRemove) markersRef.current.delete(k);
-    if (toRemove.length > 0) {
-      setRows((prev) =>
-        prev.filter((r) => nowTs - new Date(r.created_at).getTime() < MAX_AGE_MS),
-      );
-    }
-  }, [nowTs]);
 
-  // --- Heatmap toggle (recent only, weighted by freshness) ---
+    // Add or refresh markers in window
+    for (const row of freshRows) {
+      const k = rowKey(row);
+      const existing = markersRef.current.get(k);
+      if (!existing) {
+        const isNew = newKeysRef.current.delete(k);
+        addMarker(row, isNew);
+      } else {
+        existing.setOpacity(ageOpacity(row.created_at, nowTs, windowMs));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [freshRows, nowTs, windowMs, lang]);
+
+  // --- Heatmap toggle (windowed, weighted by freshness) ---
   useEffect(() => {
     const L = leafletRef.current as any;
     const map = mapRef.current;
@@ -335,7 +383,12 @@ export function EmotionMap() {
         map.removeLayer(markersLayerRef.current);
       }
       const points = freshRows.map(
-        (r) => [r.lat, r.lng, ageOpacity(r.created_at, nowTs)] as [number, number, number],
+        (r) =>
+          [
+            r.lat,
+            r.lng,
+            isFinite(windowMs) ? ageOpacity(r.created_at, nowTs, windowMs) : 0.6,
+          ] as [number, number, number],
       );
       if (heatLayerRef.current) {
         heatLayerRef.current.setLatLngs(points);
@@ -362,7 +415,7 @@ export function EmotionMap() {
         map.addLayer(markersLayerRef.current);
       }
     }
-  }, [heatmap, freshRows, nowTs]);
+  }, [heatmap, freshRows, nowTs, windowMs]);
 
   function addMarker(row: EmotionRow, isNew: boolean) {
     const L = leafletRef.current;
@@ -386,7 +439,7 @@ export function EmotionMap() {
 
     const marker = L.marker([row.lat, row.lng], { icon, keyboard: false }).addTo(layer);
     (marker as unknown as { __row: EmotionRow }).__row = row;
-    const op = ageOpacity(row.created_at, Date.now());
+    const op = ageOpacity(row.created_at, Date.now(), windowMs);
     if (op <= 0) return;
     marker.setOpacity(op);
 
@@ -435,7 +488,7 @@ export function EmotionMap() {
         {/* Global Mood */}
         {moodMeta && (
           <div
-            key={`${moodMeta.key}-${lang}`}
+            key={`${moodMeta.key}-${lang}-${range}`}
             className="pointer-events-auto mt-3 inline-flex animate-fade-in items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1.5 text-xs text-foreground/90 backdrop-blur-md sm:text-sm"
             style={{
               boxShadow: `0 8px 30px -12px color-mix(in oklab, var(${moodMeta.cssVar}) 55%, transparent)`,
@@ -454,9 +507,38 @@ export function EmotionMap() {
         )}
       </header>
 
-      {/* Top-right controls: language + heatmap toggle */}
+      {/* Top-right controls: language + range filter + heatmap toggle */}
       <div className="pointer-events-auto absolute right-4 top-5 z-[400] flex flex-col items-end gap-2 sm:right-7 sm:top-7">
         <LanguageSwitcher />
+
+        {/* Time range filter */}
+        <div
+          role="tablist"
+          aria-label="Time range"
+          className="inline-flex items-center gap-0.5 rounded-full border border-border bg-surface/70 p-1 text-[11px] uppercase tracking-[0.14em] text-foreground/80 backdrop-blur-md sm:text-xs"
+        >
+          {RANGES.map((r) => {
+            const active = range === r.key;
+            return (
+              <button
+                key={r.key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setRange(r.key)}
+                className={[
+                  "relative rounded-full px-3 py-1 transition-all duration-300",
+                  active
+                    ? "bg-foreground/90 text-background shadow-[0_4px_18px_-6px_rgba(0,0,0,0.5)]"
+                    : "text-muted-foreground hover:text-foreground",
+                ].join(" ")}
+              >
+                {t(`range.${r.key}`)}
+              </button>
+            );
+          })}
+        </div>
+
         <button
           type="button"
           onClick={() => setHeatmap((v) => !v)}

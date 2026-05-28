@@ -41,6 +41,11 @@ const en: Dict = {
   "emotion.hope": "Hope",
   "tooltip.read": "{emoji} {label} · tap to read",
   "tooltip.simple": "{emoji} {label}",
+  "range.live": "Live",
+  "range.today": "Today",
+  "range.week": "Week",
+  "range.all": "All",
+
 };
 
 const sk: Dict = {
@@ -79,6 +84,11 @@ const sk: Dict = {
   "emotion.hope": "Nádej",
   "tooltip.read": "{emoji} {label} · klikni pre čítanie",
   "tooltip.simple": "{emoji} {label}",
+  "range.live": "Naživo",
+  "range.today": "Dnes",
+  "range.week": "Týždeň",
+  "range.all": "Všetko",
+
 };
 
 const DICTS: Record<Lang, Dict> = { en, sk };
