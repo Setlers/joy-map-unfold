@@ -512,7 +512,10 @@ export function EmotionMap() {
 
         {/* Right: language + range + toggle */}
         <div className="pointer-events-auto flex flex-col items-start gap-2 sm:items-end">
-          <LanguageSwitcher />
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <AmbientSound />
+          </div>
 
           {/* Time range filter */}
           <div
