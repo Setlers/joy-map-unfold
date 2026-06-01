@@ -472,90 +472,93 @@ export function EmotionMap() {
     <div className="relative h-[100dvh] w-full overflow-hidden">
       <div ref={containerRef} className="absolute inset-0" />
 
-      {/* Header overlay */}
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-[400] flex flex-col items-start gap-1 p-5 sm:p-7">
-        <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.18em] text-muted-foreground backdrop-blur-md">
-          <span className="size-1.5 rounded-full bg-emotion-hope" />
-          {t("live.feelings", { count: freshRows.length })}
-        </div>
-        <h1 className="mt-2 max-w-xl text-3xl font-semibold leading-[1.05] sm:text-5xl">
-          {t("hero.title")}
-        </h1>
-        <p className="max-w-md text-sm text-muted-foreground sm:text-base">
-          {t("hero.subtitle")}
-        </p>
+      {/* Top area: header + controls */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-[400] flex flex-col gap-3 p-5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:p-7">
+        {/* Left: title, subtitle, mood */}
+        <header className="flex min-w-0 flex-col items-start gap-1">
+          <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.18em] text-muted-foreground backdrop-blur-md">
+            <span className="size-1.5 rounded-full bg-emotion-hope" />
+            {t("live.feelings", { count: freshRows.length })}
+          </div>
+          <h1 className="mt-2 max-w-full text-3xl font-semibold leading-[1.05] sm:max-w-xl sm:text-5xl">
+            {t("hero.title")}
+          </h1>
+          <p className="max-w-full text-sm text-muted-foreground sm:max-w-md sm:text-base">
+            {t("hero.subtitle")}
+          </p>
 
-        {/* Global Mood */}
-        {moodMeta && (
+          {/* Global Mood */}
+          {moodMeta && (
+            <div
+              key={`${moodMeta.key}-${lang}-${range}`}
+              className="pointer-events-auto mt-3 inline-flex animate-fade-in items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1.5 text-xs text-foreground/90 backdrop-blur-md sm:text-sm"
+              style={{
+                boxShadow: `0 8px 30px -12px color-mix(in oklab, var(${moodMeta.cssVar}) 55%, transparent)`,
+              }}
+            >
+              <span
+                className="size-2 rounded-full"
+                style={{
+                  background: `var(${moodMeta.cssVar})`,
+                  boxShadow: `0 0 12px var(${moodMeta.cssVar})`,
+                }}
+              />
+              <span>{t(`mood.${moodMeta.key}`)}</span>
+              <span className="text-muted-foreground">{t("mood.today")}</span>
+            </div>
+          )}
+        </header>
+
+        {/* Right: language + range + toggle */}
+        <div className="pointer-events-auto flex flex-col items-start gap-2 sm:items-end">
+          <LanguageSwitcher />
+
+          {/* Time range filter */}
           <div
-            key={`${moodMeta.key}-${lang}-${range}`}
-            className="pointer-events-auto mt-3 inline-flex animate-fade-in items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1.5 text-xs text-foreground/90 backdrop-blur-md sm:text-sm"
-            style={{
-              boxShadow: `0 8px 30px -12px color-mix(in oklab, var(${moodMeta.cssVar}) 55%, transparent)`,
-            }}
+            role="tablist"
+            aria-label="Time range"
+            className="inline-flex flex-wrap items-center gap-0.5 rounded-full border border-border bg-surface/70 p-1 text-[11px] uppercase tracking-[0.14em] text-foreground/80 backdrop-blur-md sm:flex-nowrap sm:text-xs"
+          >
+            {RANGES.map((r) => {
+              const active = range === r.key;
+              return (
+                <button
+                  key={r.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setRange(r.key)}
+                  className={[
+                    "relative rounded-full px-2.5 py-1 transition-all duration-300 sm:px-3",
+                    active
+                      ? "bg-foreground/90 text-background shadow-[0_4px_18px_-6px_rgba(0,0,0,0.5)]"
+                      : "text-muted-foreground hover:text-foreground",
+                  ].join(" ")}
+                >
+                  {t(`range.${r.key}`)}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setHeatmap((v) => !v)}
+            aria-pressed={heatmap}
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-foreground/85 backdrop-blur-md transition-colors hover:bg-accent"
           >
             <span
-              className="size-2 rounded-full"
+              className="size-1.5 rounded-full"
               style={{
-                background: `var(${moodMeta.cssVar})`,
-                boxShadow: `0 0 12px var(${moodMeta.cssVar})`,
+                background: heatmap ? "var(--emotion-anxiety)" : "var(--emotion-calm)",
+                boxShadow: heatmap
+                  ? "0 0 10px var(--emotion-anxiety)"
+                  : "0 0 10px var(--emotion-calm)",
               }}
             />
-            <span>{t(`mood.${moodMeta.key}`)}</span>
-            <span className="text-muted-foreground">{t("mood.today")}</span>
-          </div>
-        )}
-      </header>
-
-      {/* Top-right controls: language + range filter + heatmap toggle */}
-      <div className="pointer-events-auto absolute right-4 top-5 z-[400] flex flex-col items-end gap-2 sm:right-7 sm:top-7">
-        <LanguageSwitcher />
-
-        {/* Time range filter */}
-        <div
-          role="tablist"
-          aria-label="Time range"
-          className="inline-flex items-center gap-0.5 rounded-full border border-border bg-surface/70 p-1 text-[11px] uppercase tracking-[0.14em] text-foreground/80 backdrop-blur-md sm:text-xs"
-        >
-          {RANGES.map((r) => {
-            const active = range === r.key;
-            return (
-              <button
-                key={r.key}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setRange(r.key)}
-                className={[
-                  "relative rounded-full px-3 py-1 transition-all duration-300",
-                  active
-                    ? "bg-foreground/90 text-background shadow-[0_4px_18px_-6px_rgba(0,0,0,0.5)]"
-                    : "text-muted-foreground hover:text-foreground",
-                ].join(" ")}
-              >
-                {t(`range.${r.key}`)}
-              </button>
-            );
-          })}
+            {heatmap ? t("toggle.heatmap") : t("toggle.points")}
+          </button>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setHeatmap((v) => !v)}
-          aria-pressed={heatmap}
-          className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-foreground/85 backdrop-blur-md transition-colors hover:bg-accent"
-        >
-          <span
-            className="size-1.5 rounded-full"
-            style={{
-              background: heatmap ? "var(--emotion-anxiety)" : "var(--emotion-calm)",
-              boxShadow: heatmap
-                ? "0 0 10px var(--emotion-anxiety)"
-                : "0 0 10px var(--emotion-calm)",
-            }}
-          />
-          {heatmap ? t("toggle.heatmap") : t("toggle.points")}
-        </button>
       </div>
 
       {/* Emotional Whispers */}
