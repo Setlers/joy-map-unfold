@@ -45,6 +45,10 @@ const en: Dict = {
   "range.today": "Today",
   "range.week": "Week",
   "range.all": "All",
+  "sound.on": "Sound on",
+  "sound.off": "Sound off",
+
+
 
 };
 
@@ -88,6 +92,10 @@ const sk: Dict = {
   "range.today": "Dnes",
   "range.week": "Týždeň",
   "range.all": "Všetko",
+  "sound.on": "Zvuk zap.",
+  "sound.off": "Zvuk vyp.",
+
+
 
 };
 
