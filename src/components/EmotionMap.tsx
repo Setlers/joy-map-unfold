@@ -7,6 +7,7 @@ import { submitEmotion } from "@/lib/emotions.functions";
 import { moderateMessage, MAX_MESSAGE_LENGTH } from "@/lib/moderation";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { AmbientSound } from "@/components/AmbientSound";
 import { toast } from "sonner";
 
 interface EmotionRow {
