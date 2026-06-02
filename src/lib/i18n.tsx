@@ -93,9 +93,8 @@ const sk: Dict = {
   "range.all": "Všetko",
   "sound.on": "Zvuk zap.",
   "sound.off": "Zvuk vyp.",
-
-
-
+  "onboarding.hint": "Klepni kdekoľvek na mapu a pridaj svoju emóciu.",
+  "onboarding.tapToDismiss": "Klepni pre pokračovanie",
 };
 
 const DICTS: Record<Lang, Dict> = { en, sk };
