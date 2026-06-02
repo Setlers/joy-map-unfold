@@ -119,8 +119,6 @@ function detectInitial(): Lang {
   } catch {
     /* ignore */
   }
-  const nav = typeof navigator !== "undefined" ? navigator.language?.toLowerCase() ?? "" : "";
-  if (nav.startsWith("sk") || nav.startsWith("cs")) return "sk";
   return "en";
 }
 
