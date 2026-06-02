@@ -8,6 +8,7 @@ import { moderateMessage, MAX_MESSAGE_LENGTH } from "@/lib/moderation";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { AmbientSound } from "@/components/AmbientSound";
+import { OnboardingHint } from "@/components/OnboardingHint";
 import { toast } from "sonner";
 
 interface EmotionRow {
@@ -189,10 +190,11 @@ export function EmotionMap() {
         minZoom: 2,
         maxZoom: 18,
         worldCopyJump: true,
-        zoomControl: true,
+        zoomControl: false,
         attributionControl: true,
       });
       mapRef.current = map;
+      L.control.zoom({ position: "topright" }).addTo(map);
 
       L.tileLayer(
         "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
@@ -640,6 +642,7 @@ export function EmotionMap() {
           })}
         </div>
       </div>
+      <OnboardingHint />
     </div>
   );
 }
