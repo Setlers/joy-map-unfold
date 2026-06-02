@@ -47,9 +47,8 @@ const en: Dict = {
   "range.all": "All",
   "sound.on": "Sound on",
   "sound.off": "Sound off",
-
-
-
+  "onboarding.hint": "Tap anywhere on the map to add your emotion.",
+  "onboarding.tapToDismiss": "Tap to continue",
 };
 
 const sk: Dict = {
