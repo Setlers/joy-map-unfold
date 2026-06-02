@@ -152,6 +152,17 @@
   background: var(--accent) !important;
 }
 
+/* Push the top-right zoom control below the header controls cluster
+   so it never overlaps language, sound, time-range, or heatmap toggle. */
+.leaflet-top.leaflet-right {
+  top: 18rem;
+}
+@media (min-width: 640px) {
+  .leaflet-top.leaflet-right {
+    top: 11rem;
+  }
+}
+
 /* Emotion marker dots */
 .emotion-dot {
   width: 14px;
