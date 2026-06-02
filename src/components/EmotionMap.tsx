@@ -642,6 +642,7 @@ export function EmotionMap() {
           })}
         </div>
       </div>
+      <OnboardingHint />
     </div>
   );
 }
