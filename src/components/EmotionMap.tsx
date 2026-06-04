@@ -517,6 +517,23 @@ export function EmotionMap() {
           <div className="flex items-center gap-2">
             <LanguageSwitcher />
             <AmbientSound />
+            <button
+              type="button"
+              onClick={() => setHeatmap((v) => !v)}
+              aria-pressed={heatmap}
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-foreground/85 backdrop-blur-md transition-colors hover:bg-accent"
+            >
+              <span
+                className="size-1.5 rounded-full"
+                style={{
+                  background: heatmap ? "var(--emotion-anxiety)" : "var(--emotion-calm)",
+                  boxShadow: heatmap
+                    ? "0 0 10px var(--emotion-anxiety)"
+                    : "0 0 10px var(--emotion-calm)",
+                }}
+              />
+              {heatmap ? t("toggle.heatmap") : t("toggle.points")}
+            </button>
           </div>
 
           {/* Time range filter */}
