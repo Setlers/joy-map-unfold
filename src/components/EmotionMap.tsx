@@ -394,6 +394,9 @@ export function EmotionMap() {
           ] as [number, number, number],
       );
       if (heatLayerRef.current) {
+        if (!map.hasLayer(heatLayerRef.current)) {
+          heatLayerRef.current.addTo(map);
+        }
         heatLayerRef.current.setLatLngs(points);
       } else {
         heatLayerRef.current = L.heatLayer(points, {
