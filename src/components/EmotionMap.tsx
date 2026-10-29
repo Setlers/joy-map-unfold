@@ -10,14 +10,8 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { AmbientSound } from "@/components/AmbientSound";
 import { OnboardingHint } from "@/components/OnboardingHint";
 import { toast } from "sonner";
-
-interface EmotionRow {
-  emotion: EmotionKey;
-  lat: number;
-  lng: number;
-  message: string | null;
-  created_at: string;
-}
+import { readEmotionFeed, type EmotionRow } from "@/lib/emotion-feed";
+import { summarizeEmotions } from "@/lib/emotion-summary";
 
 function rowKey(r: EmotionRow) {
   return `${r.created_at}|${r.emotion}|${r.lat}|${r.lng}|${r.message ?? ""}`;
@@ -76,11 +70,12 @@ export function EmotionMap() {
   }, [t]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const leafletRef = useRef<typeof L | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
-  const heatLayerRef = useRef<any>(null);
+  const heatLayerRef = useRef<L.HeatLayer | null>(null);
   const submittingRef = useRef(false);
   const lastSubmitRef = useRef(0);
   const newKeysRef = useRef<Set<string>>(new Set());
@@ -99,10 +94,37 @@ export function EmotionMap() {
   }, [message]);
 
   const [rows, setRows] = useState<EmotionRow[]>([]);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [realtimeState, setRealtimeState] = useState<"connecting" | "live" | "error">("connecting");
+  const [reloadAttempt, setReloadAttempt] = useState(0);
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
+  const [mapReady, setMapReady] = useState(false);
+  const retryFeed = () => {
+    setReloadAttempt((attempt) => attempt + 1);
+    setConnectionAttempt((attempt) => attempt + 1);
+  };
   const [heatmap, setHeatmap] = useState(false);
   const [range, setRangeState] = useState<RangeKey>("today");
   const windowMs = RANGE_BY_KEY[range];
   const [nowTs, setNowTs] = useState(() => Date.now());
+
+  // Error messages and translations change the header height. Keep Leaflet's
+  // zoom buttons below the actual controls instead of a fixed pixel offset.
+  useEffect(() => {
+    const header = headerRef.current;
+    const container = containerRef.current;
+    if (!header || !container) return;
+    const update = () =>
+      container.style.setProperty(
+        "--map-header-height",
+        `${header.getBoundingClientRect().height}px`,
+      );
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
 
   // Hydrate range from storage on client (avoid SSR mismatch).
   useEffect(() => {
@@ -135,24 +157,8 @@ export function EmotionMap() {
     return rows.filter((r) => nowTs - new Date(r.created_at).getTime() < windowMs);
   }, [rows, nowTs, windowMs]);
 
-  // Global mood within current window
-  const mood = useMemo(() => {
-    const counts: Record<EmotionKey, number> = {
-      joy: 0, calm: 0, sadness: 0, anger: 0, anxiety: 0, hope: 0,
-    };
-    let total = 0;
-    for (const r of freshRows) {
-      counts[r.emotion] = (counts[r.emotion] ?? 0) + 1;
-      total++;
-    }
-    if (total === 0) return null;
-    let top: EmotionKey = "calm";
-    let max = -1;
-    for (const k of Object.keys(counts) as EmotionKey[]) {
-      if (counts[k] > max) { max = counts[k]; top = k; }
-    }
-    return { key: top, count: max, total };
-  }, [freshRows]);
+  // Describe only the loaded sample in the selected time window.
+  const mood = useMemo(() => summarizeEmotions(freshRows), [freshRows]);
 
   // Whispers within window
   const whispers = useMemo(
@@ -166,7 +172,11 @@ export function EmotionMap() {
     const interval = setInterval(() => {
       setWhisperVisible(false);
       setTimeout(() => {
-        setWhisperIdx((i) => (i + 1 + Math.floor(Math.random() * Math.max(1, whispers.length - 1))) % whispers.length);
+        setWhisperIdx(
+          (i) =>
+            (i + 1 + Math.floor(Math.random() * Math.max(1, whispers.length - 1))) %
+            whispers.length,
+        );
         setWhisperVisible(true);
       }, 600);
     }, 6500);
@@ -177,6 +187,7 @@ export function EmotionMap() {
   // --- init Leaflet on mount (client only) ---
   useEffect(() => {
     let cancelled = false;
+    const markers = markersRef.current;
 
     (async () => {
       const L = (await import("leaflet")).default;
@@ -206,6 +217,7 @@ export function EmotionMap() {
       ).addTo(map);
 
       markersLayerRef.current = L.layerGroup().addTo(map);
+      setMapReady(true);
 
       // Click to drop an emotion
       map.on("click", async (e) => {
@@ -262,14 +274,33 @@ export function EmotionMap() {
           submittingRef.current = false;
         }
       });
+    })();
 
-      // Realtime — always ingest into rows; the window filter decides what renders.
-      const channel = supabase
+    return () => {
+      cancelled = true;
+      mapRef.current?.remove();
+      mapRef.current = null;
+      markers.clear();
+      markersLayerRef.current = null;
+      heatLayerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Track connection health independently of map initialization. A successful
+  // reconnect fetches the snapshot again to recover events missed while offline.
+  useEffect(() => {
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | undefined;
+    setRealtimeState("connecting");
+    try {
+      channel = supabase
         .channel("emotions-feed")
         .on(
           "postgres_changes",
           { event: "INSERT", schema: "public", table: "emotions" },
           (payload) => {
+            if (cancelled) return;
             const raw = payload.new as Record<string, unknown>;
             const row: EmotionRow = {
               emotion: raw.emotion as EmotionKey,
@@ -286,63 +317,61 @@ export function EmotionMap() {
             });
           },
         )
-        .subscribe();
-
-      (map as unknown as { __channel: typeof channel }).__channel = channel;
-    })();
+        .subscribe((status) => {
+          if (cancelled) return;
+          if (status === "SUBSCRIBED") {
+            setRealtimeState("live");
+            setReloadAttempt((attempt) => attempt + 1);
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            setRealtimeState("error");
+          }
+        });
+    } catch {
+      setRealtimeState("error");
+    }
 
     return () => {
       cancelled = true;
-      const map = mapRef.current;
-      if (map) {
-        const channel = (map as unknown as { __channel?: ReturnType<typeof supabase.channel> })
-          .__channel;
-        if (channel) supabase.removeChannel(channel);
-        map.remove();
-      }
-      mapRef.current = null;
-      markersRef.current.clear();
-      markersLayerRef.current = null;
-      heatLayerRef.current = null;
+      if (channel) void supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [connectionAttempt]);
 
   // --- Re-fetch from DB when range changes ---
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    setLoadState("loading");
     (async () => {
-      let query = supabase
-        .from("emotions")
-        .select("emotion, lat, lng, message, created_at")
-        .order("created_at", { ascending: false })
-        .limit(1000);
-      if (isFinite(windowMs)) {
-        query = query.gte(
-          "created_at",
-          new Date(Date.now() - windowMs).toISOString(),
-        );
-      }
-      const { data } = await query;
-      if (cancelled || !data) return;
-      setRows((prev) => {
-        const seen = new Set(prev.map(rowKey));
-        const merged = [...prev];
-        for (const r of data as EmotionRow[]) {
-          const k = rowKey(r);
-          if (!seen.has(k)) {
-            seen.add(k);
-            merged.push(r);
+      try {
+        const data = await readEmotionFeed(supabase, windowMs, controller.signal);
+        if (cancelled) return;
+        setRows((prev) => {
+          const seen = new Set(prev.map(rowKey));
+          const merged = [...prev];
+          for (const r of data as EmotionRow[]) {
+            const k = rowKey(r);
+            if (!seen.has(k)) {
+              seen.add(k);
+              merged.push(r);
+            }
           }
-        }
-        merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-        return merged.slice(0, 5000);
-      });
+          merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+          return merged.slice(0, 5000);
+        });
+        setLoadState("ready");
+      } catch {
+        if (!cancelled) setLoadState("error");
+      } finally {
+        clearTimeout(timeout);
+      }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
+      controller.abort();
     };
-  }, [range, windowMs]);
+  }, [range, windowMs, reloadAttempt]);
 
   // --- Sync markers to freshRows + update opacity / labels ---
   useEffect(() => {
@@ -372,11 +401,11 @@ export function EmotionMap() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [freshRows, nowTs, windowMs, lang]);
+  }, [freshRows, nowTs, windowMs, lang, mapReady]);
 
   // --- Heatmap toggle (windowed, weighted by freshness) ---
   useEffect(() => {
-    const L = leafletRef.current as any;
+    const L = leafletRef.current;
     const map = mapRef.current;
     if (!L || !map) return;
 
@@ -386,11 +415,11 @@ export function EmotionMap() {
       }
       const points = freshRows.map(
         (r) =>
-          [
-            r.lat,
-            r.lng,
-            isFinite(windowMs) ? ageOpacity(r.created_at, nowTs, windowMs) : 0.6,
-          ] as [number, number, number],
+          [r.lat, r.lng, isFinite(windowMs) ? ageOpacity(r.created_at, nowTs, windowMs) : 0.6] as [
+            number,
+            number,
+            number,
+          ],
       );
       if (heatLayerRef.current) {
         if (!map.hasLayer(heatLayerRef.current)) {
@@ -420,7 +449,7 @@ export function EmotionMap() {
         map.addLayer(markersLayerRef.current);
       }
     }
-  }, [heatmap, freshRows, nowTs, windowMs]);
+  }, [heatmap, freshRows, nowTs, windowMs, mapReady]);
 
   function addMarker(row: EmotionRow, isNew: boolean) {
     const L = leafletRef.current;
@@ -471,19 +500,31 @@ export function EmotionMap() {
   }
 
   const remaining = MAX_MESSAGE - message.length;
-  const moodMeta = mood ? EMOTIONS_BY_KEY[mood.key] : null;
+  const moodMeta = mood?.keys.length === 1 ? EMOTIONS_BY_KEY[mood.keys[0]] : null;
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden">
       <div ref={containerRef} className="absolute inset-0" />
 
       {/* Top area: header + controls */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-[400] flex flex-col gap-3 p-5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:p-7">
+      <div
+        ref={headerRef}
+        className="pointer-events-none absolute inset-x-0 top-0 z-[400] flex flex-col gap-3 p-5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:p-7"
+      >
         {/* Left: title, subtitle, mood */}
         <header className="flex min-w-0 flex-col items-start gap-1">
           <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.18em] text-muted-foreground backdrop-blur-md">
-            <span className="size-1.5 rounded-full bg-emotion-hope" />
-            {t("live.feelings", { count: freshRows.length })}
+            <span
+              className={`size-1.5 rounded-full ${loadState === "ready" && realtimeState === "live" ? "bg-emotion-hope" : "bg-muted-foreground"}`}
+            />
+            {loadState === "loading"
+              ? t("feed.loading")
+              : t(
+                  loadState === "ready" && realtimeState === "live"
+                    ? "live.feelings"
+                    : "feed.snapshot",
+                  { count: freshRows.length },
+                )}
           </div>
           <h1 className="mt-2 max-w-full text-3xl font-semibold leading-[1.05] sm:max-w-xl sm:text-5xl">
             {t("hero.title")}
@@ -492,37 +533,80 @@ export function EmotionMap() {
             {t("hero.subtitle")}
           </p>
 
-          {/* Global Mood */}
-          {moodMeta && (
+          <div
+            className="pointer-events-auto max-w-md text-sm"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {loadState === "error" && (
+              <p role="alert" className="mt-2 rounded-xl border border-border bg-surface/90 p-3">
+                {t(freshRows.length ? "feed.error.cached" : "feed.error")}
+              </p>
+            )}
+            {loadState === "ready" && freshRows.length === 0 && (
+              <p className="mt-2 rounded-xl border border-border bg-surface/90 p-3">
+                {t("feed.empty")}
+              </p>
+            )}
+            {realtimeState === "error" && (
+              <p className="mt-2 rounded-xl border border-border bg-surface/90 p-3">
+                {t("feed.realtime.error")}
+              </p>
+            )}
+            {realtimeState === "connecting" && loadState === "ready" && (
+              <p className="mt-2 text-muted-foreground">{t("feed.connecting")}</p>
+            )}
+            {(loadState === "error" || realtimeState === "error") && (
+              <button
+                type="button"
+                onClick={retryFeed}
+                disabled={loadState === "loading"}
+                className="mt-2 rounded-full border border-border bg-surface/90 px-3 py-1.5 text-sm disabled:opacity-50"
+              >
+                {t("feed.retry")}
+              </button>
+            )}
+          </div>
+
+          {/* Most frequent emotions in the loaded sample */}
+          {mood && loadState === "ready" && (
             <div
-              key={`${moodMeta.key}-${lang}-${range}`}
-              className="pointer-events-auto mt-3 inline-flex animate-fade-in items-center gap-2 rounded-full border border-border bg-surface/60 px-3 py-1.5 text-xs text-foreground/90 backdrop-blur-md sm:text-sm"
+              key={`${mood.keys.join("-")}-${lang}-${range}`}
+              className="pointer-events-auto mt-3 inline-flex max-w-full animate-fade-in flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface/60 px-3 py-1.5 text-xs text-foreground/90 backdrop-blur-md sm:text-sm"
               style={{
-                boxShadow: `0 8px 30px -12px color-mix(in oklab, var(${moodMeta.cssVar}) 55%, transparent)`,
+                boxShadow: `0 8px 30px -12px color-mix(in oklab, var(${moodMeta?.cssVar ?? "--muted-foreground"}) 55%, transparent)`,
               }}
             >
               <span
                 className="size-2 rounded-full"
                 style={{
-                  background: `var(${moodMeta.cssVar})`,
-                  boxShadow: `0 0 12px var(${moodMeta.cssVar})`,
+                  background: `var(${moodMeta?.cssVar ?? "--muted-foreground"})`,
+                  boxShadow: `0 0 12px var(${moodMeta?.cssVar ?? "--muted-foreground"})`,
                 }}
               />
-              <span>{t(`mood.${moodMeta.key}`)}</span>
-              <span className="text-muted-foreground">{t("mood.today")}</span>
+              <span>
+                {t(mood.keys.length === 1 ? "mood.summary" : "mood.summary.tied", {
+                  emotions: mood.keys.map((key) => t(`emotion.${key}`)).join(" / "),
+                  count: mood.count,
+                  total: mood.total,
+                })}
+              </span>
+              <span className="text-muted-foreground">· {t(`range.description.${range}`)}</span>
             </div>
           )}
+          <p className="mt-2 max-w-md text-xs text-muted-foreground">{t("mood.sample")}</p>
         </header>
 
         {/* Right: language + range + toggle */}
         <div className="pointer-events-auto flex flex-col items-start gap-2 sm:items-end">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-start gap-2">
             <LanguageSwitcher />
             <AmbientSound />
             <button
               type="button"
               onClick={() => setHeatmap((v) => !v)}
               aria-pressed={heatmap}
+              aria-describedby="heatmap-description"
               className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-foreground/85 backdrop-blur-md transition-colors hover:bg-accent"
             >
               <span
@@ -538,10 +622,14 @@ export function EmotionMap() {
             </button>
           </div>
 
+          <p id="heatmap-description" className="max-w-xs text-xs text-muted-foreground">
+            {t(`${heatmap ? "heatmap" : "points"}.description${range === "all" ? ".all" : ""}`)}
+          </p>
+
           {/* Time range filter */}
           <div
             role="tablist"
-            aria-label="Time range"
+            aria-label={t("range.label")}
             className="inline-flex flex-wrap items-center gap-0.5 rounded-full border border-border bg-surface/70 p-1 text-[11px] uppercase tracking-[0.14em] text-foreground/80 backdrop-blur-md sm:flex-nowrap sm:text-xs"
           >
             {RANGES.map((r) => {
@@ -552,6 +640,7 @@ export function EmotionMap() {
                   type="button"
                   role="tab"
                   aria-selected={active}
+                  title={t(`range.description.${r.key}`)}
                   onClick={() => setRange(r.key)}
                   className={[
                     "relative rounded-full px-2.5 py-1 transition-all duration-300 sm:px-3",

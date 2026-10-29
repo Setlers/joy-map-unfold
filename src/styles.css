@@ -152,15 +152,9 @@
   background: var(--accent) !important;
 }
 
-/* Push the top-right zoom control below the header controls cluster
-   so it never overlaps language, sound, time-range, or heatmap toggle. */
+/* ResizeObserver updates this offset as controls and status messages wrap. */
 .leaflet-top.leaflet-right {
-  top: 18rem;
-}
-@media (min-width: 640px) {
-  .leaflet-top.leaflet-right {
-    top: 11rem;
-  }
+  top: calc(var(--map-header-height, 18rem) + 0.5rem);
 }
 
 /* Emotion marker dots */

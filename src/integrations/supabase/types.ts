@@ -46,7 +46,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      claim_emotion_submission: {
+        Args: { p_subject_hash: string }
+        Returns: number
+      }
     }
     Enums: {
       emotion_type: "joy" | "calm" | "sadness" | "anger" | "anxiety" | "hope"

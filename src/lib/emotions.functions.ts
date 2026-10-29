@@ -1,36 +1,27 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getCookie, setCookie } from "@tanstack/react-start/server";
+import { getRequestHeader, getRequestIP } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { moderateMessage, RATE_LIMIT_MS } from "./moderation";
+import { moderateMessage } from "./moderation";
+import { emotionRateLimitSubject } from "./emotion-rate-limit.server";
+import { normalizeLongitude } from "./coordinates";
 
 const EMOTION_KEYS = ["joy", "calm", "sadness", "anger", "anxiety", "hope"] as const;
 
 const InputSchema = z.object({
   emotion: z.enum(EMOTION_KEYS),
   lat: z.number().min(-90).max(90),
-  lng: z.number().min(-180).max(180),
+  lng: z.number().finite(),
   message: z.string().max(500).nullable().optional(),
 });
 
-const RATE_COOKIE = "emotion_rl";
 const DUP_WINDOW_MS = 60 * 60 * 1000; // 1h
 
 export const submitEmotion = createServerFn({ method: "POST" })
   .inputValidator((input) => InputSchema.parse(input))
   .handler(async ({ data }) => {
-    // 1) Rate limit (cookie-based, 1/min)
-    const last = Number(getCookie(RATE_COOKIE) ?? 0);
+    // Shared database state survives cookie deletion and server restarts.
     const now = Date.now();
-    if (last && now - last < RATE_LIMIT_MS) {
-      const wait = Math.ceil((RATE_LIMIT_MS - (now - last)) / 1000);
-      return {
-        ok: false as const,
-        code: "rate" as const,
-        reason: `Take a breath — try again in ${wait}s.`,
-        params: { sec: wait },
-      };
-    }
 
     // 2) Moderate message (if any)
     const moderation = moderateMessage(data.message ?? "");
@@ -44,15 +35,47 @@ export const submitEmotion = createServerFn({ method: "POST" })
     }
     const cleanMessage = moderation.clean.length > 0 ? moderation.clean : null;
 
+    const subject = await emotionRateLimitSubject(
+      getRequestIP(),
+      getRequestHeader("cf-connecting-ip"),
+      process.env.EMOTION_TRUST_CLOUDFLARE_IP === "true",
+    );
+    const { data: wait, error: rateError } = await supabaseAdmin.rpc("claim_emotion_submission", {
+      p_subject_hash: subject,
+    });
+    if (rateError || wait === null) {
+      console.error("[submitEmotion] rate limit unavailable", rateError?.code);
+      return {
+        ok: false as const,
+        code: "save_failed" as const,
+        reason: "Couldn't save your feeling. Try again.",
+      };
+    }
+    if (wait > 0) {
+      return {
+        ok: false as const,
+        code: "rate" as const,
+        reason: `Take a breath — try again in ${wait}s.`,
+        params: { sec: wait },
+      };
+    }
+
     // 3) Duplicate prevention
     if (cleanMessage) {
       const since = new Date(now - DUP_WINDOW_MS).toISOString();
-      const { data: dupes } = await supabaseAdmin
+      const { data: dupes, error: duplicateError } = await supabaseAdmin
         .from("emotions")
         .select("id")
         .eq("message", cleanMessage)
         .gte("created_at", since)
         .limit(1);
+      if (duplicateError) {
+        return {
+          ok: false as const,
+          code: "save_failed" as const,
+          reason: "Couldn't save your feeling. Try again.",
+        };
+      }
       if (dupes && dupes.length > 0) {
         return {
           ok: false as const,
@@ -62,14 +85,12 @@ export const submitEmotion = createServerFn({ method: "POST" })
       }
     }
 
-    // 4) Insert — round coords to ~11km for privacy (also enforced by DB trigger)
-    const roundedLat = Math.round(data.lat * 10) / 10;
-    const normLng = ((data.lng + 540) % 360) - 180;
-    const roundedLng = Math.round(normLng * 10) / 10;
+    // The database rounds to one decimal, including negative halfway values.
+    // Avoid rounding twice with different JavaScript/PostgreSQL rules.
     const { error } = await supabaseAdmin.from("emotions").insert({
       emotion: data.emotion,
-      lat: roundedLat,
-      lng: roundedLng,
+      lat: data.lat,
+      lng: normalizeLongitude(data.lng),
       message: cleanMessage,
     });
 
@@ -81,14 +102,6 @@ export const submitEmotion = createServerFn({ method: "POST" })
         reason: "Couldn't save your feeling. Try again.",
       };
     }
-
-    // 5) Update rate-limit cookie
-    setCookie(RATE_COOKIE, String(now), {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24,
-    });
 
     return { ok: true as const };
   });

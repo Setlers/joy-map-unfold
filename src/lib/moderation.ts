@@ -4,34 +4,112 @@
 export const MAX_MESSAGE_LENGTH = 120;
 export const RATE_LIMIT_MS = 60_000; // 1 submission per minute
 
-// English + Slovak profanity / slurs. Kept as stems to catch inflections.
+// Explicit English + Slovak terms and inflections; never match arbitrary stems.
 // Goal is friendly nudging, not perfect filtering.
 const BLOCKED_WORDS = [
+  "fucker",
+  "fuckers",
+  "fucking",
+  "fucked",
+  "motherfuckers",
+  "motherfucking",
+  "bullshit",
+  "shitty",
+  "shitting",
+  "bitches",
+  "assholes",
+  "dickhead",
   // --- English profanity ---
-  "fuck", "shit", "bitch", "asshole", "bastard", "dick", "cock", "pussy",
-  "cunt", "wank", "twat", "slut", "whore", "motherfucker", "jerk",
+  "fuck",
+  "shit",
+  "bitch",
+  "asshole",
+  "bastard",
+  "dick",
+  "cock",
+  "pussy",
+  "cunt",
+  "wank",
+  "twat",
+  "slut",
+  "whore",
+  "motherfucker",
+  "jerk",
   // --- English hate / slurs ---
-  "nigger", "nigga", "faggot", "fag", "retard", "tranny", "kike", "spic",
-  "chink", "gook", "wetback", "raghead", "towelhead",
+  "nigger",
+  "nigga",
+  "faggot",
+  "fag",
+  "retard",
+  "tranny",
+  "kike",
+  "spic",
+  "chink",
+  "gook",
+  "wetback",
+  "raghead",
+  "towelhead",
   // --- Slovak profanity ---
-  "kurva", "kurwa", "pica", "pica", "picus", "pico",
-  "jebat", "jeb", "jebem", "jebnut", "vyjeb", "zjeb", "dojeb", "ojeb",
-  "kokot", "kokos", "kokoti",
-  "mrdat", "mrd", "mrdka", "mrdam",
-  "hovno", "hovna", "hovnar",
-  "debil", "debilko", "debilny",
-  "idiot", "idioti",
-  "sracka", "srac", "sracko",
-  "prdel", "prde",
-  "kar", "skurven", "skurvy", "skurvysyn",
-  "buzerant", "buzna", "buzi",
-  "cigan", "cigani",
-  // --- Slovak hate / slurs ---
-  "cernoch", "negr", "zid",
+  "kurva",
+  "kurvy",
+  "kurvu",
+  "kurvou",
+  "kurwa",
+  "pica",
+  "picus",
+  "pico",
+  "jebat",
+  "jeb",
+  "jebem",
+  "jebnut",
+  "vyjeb",
+  "zjeb",
+  "dojeb",
+  "ojeb",
+  "kokot",
+  "kokoti",
+  "kokota",
+  "kokotom",
+  "kokotsky",
+  "mrdat",
+  "mrd",
+  "mrdka",
+  "mrdam",
+  "hovno",
+  "hovna",
+  "hovnar",
+  "debil",
+  "debilko",
+  "debilny",
+  "idiot",
+  "idioti",
+  "sracka",
+  "srac",
+  "sracko",
+  "prdel",
+  "prde",
+  "skurven",
+  "skurveny",
+  "skurvena",
+  "skurvene",
+  "skurvy",
+  "skurvysyn",
+  "vyjebany",
+  "vyjebana",
+  "vyjebane",
+  "zjebany",
+  "dojebany",
+  "ojebany",
+  "buzerant",
+  "buzna",
+  "buzi",
+  // Identity words such as "zid" and "cernoch" are not inherently abusive.
+  "negr",
 ];
 
 // URLs of all common shapes.
-const URL_REGEX = /\b((?:https?:\/\/|www\.)\S+|\S+\.(?:com|net|org|io|co|app|dev|xyz|ly|gg|me|info|biz|ru|cn|tv|us|uk|de|fr|es|it|nl|jp|br|in|au|ca|sk|cz|eu)\b\S*)/i;
+const URL_REGEX =
+  /\b((?:https?:\/\/|www\.)\S+|\S+\.(?:com|net|org|io|co|app|dev|xyz|ly|gg|me|info|biz|ru|cn|tv|us|uk|de|fr|es|it|nl|jp|br|in|au|ca|sk|cz|eu)\b\S*)/i;
 
 // Detects obvious spam patterns: long repeated chars, repeated words, shouting.
 function isSpammy(text: string): boolean {
@@ -42,58 +120,36 @@ function isSpammy(text: string): boolean {
   return false;
 }
 
-// Map common leet / diacritic substitutions to a canonical letter.
-// Keeps things fast — one pass character map.
-const CHAR_MAP: Record<string, string> = {
-  "0": "o", "1": "i", "!": "i", "|": "i", "3": "e", "4": "a", "@": "a",
-  "5": "s", "$": "s", "7": "t", "+": "t", "8": "b",
-  // Slovak diacritics
-  "á": "a", "ä": "a", "č": "c", "ď": "d", "é": "e", "ě": "e", "í": "i",
-  "ĺ": "l", "ľ": "l", "ň": "n", "ó": "o", "ô": "o", "ŕ": "r", "š": "s",
-  "ť": "t", "ú": "u", "ý": "y", "ž": "z",
-  // Common typographic
-  "‘": "'", "’": "'", "“": '"', "”": '"',
+// Match whole terms, including spaced/punctuated and common leet variants.
+// Keep word boundaries: joining the entire sentence would turn innocent words
+// such as "wish it" into a prohibited substring.
+const LETTER_VARIANTS: Record<string, string> = {
+  a: "[a4@]",
+  b: "[b8]",
+  e: "[e3]",
+  i: "[i1!|]",
+  o: "[o0]",
+  s: "[s5$]",
+  t: "[t7+]",
 };
-
-/**
- * Normalize text for profanity matching:
- *  - lowercase
- *  - map leet chars + diacritics to base letters
- *  - drop everything that isn't a letter (so "f*u*c*k" and "f u c k" → "fuck")
- *  - collapse runs of repeated letters ("fuuuck" → "fuck")
- */
-function normalizeForMatch(text: string): string {
-  const lower = text.toLowerCase();
-  let out = "";
-  for (const ch of lower) {
-    const mapped = CHAR_MAP[ch] ?? ch;
-    if (mapped >= "a" && mapped <= "z") out += mapped;
+const BETWEEN_LETTERS = String.raw`[\s\p{P}\p{S}\p{Cf}]*`;
+const BLOCKED_PATTERNS = [...new Set(BLOCKED_WORDS)].map((word) => {
+  const letters = Array.from(word, (letter) => `${LETTER_VARIANTS[letter] ?? letter}+`);
+  const variants = [letters.join(BETWEEN_LETTERS)];
+  // Allow one explicitly masked interior letter ("f*ck"). Keep masking stars
+  // out of its separators to avoid ambiguous wildcard runs and backtracking.
+  const maskedSeparator = String.raw`(?:(?![*•])[\s\p{P}\p{S}\p{Cf}])*`;
+  for (let index = 1; index < letters.length - 1; index++) {
+    const masked = [...letters];
+    masked[index] = "[*•]";
+    variants.push(masked.join(maskedSeparator));
   }
-  // collapse 3+ repeats to 1 ("fuuuuck" → "fuck", "piiica" → "pica")
-  return out.replace(/([a-z])\1{2,}/g, "$1");
-}
+  return new RegExp(String.raw`(?<![\p{L}\p{N}])(?:${variants.join("|")})(?![\p{L}\p{N}])`, "u");
+});
 
 function containsBlockedWord(text: string): boolean {
-  // 1) Full normalization — catches spaced ("f u c k"), masked ("f*ck"),
-  //    leet ("fuk3r"), diacritic ("piča"), and stretched ("piiicaaa") variants.
-  const collapsed = normalizeForMatch(text);
-  if (BLOCKED_WORDS.some((w) => collapsed.includes(w))) return true;
-
-  // 2) Also do a softer word-boundary check on a lightly-normalized version,
-  //    so legitimate words containing a stem ("classic", "scunthorpe") aren't
-  //    affected — only standalone tokens trip this path.
-  const tokens = text
-    .toLowerCase()
-    .replace(/[0@]/g, "o")
-    .replace(/[1!|]/g, "i")
-    .replace(/3/g, "e")
-    .replace(/\$|5/g, "s")
-    .split(/[^a-zà-ž]+/i)
-    .filter(Boolean);
-  return tokens.some((t) => {
-    const n = normalizeForMatch(t);
-    return BLOCKED_WORDS.includes(n);
-  });
+  const normalized = text.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+  return BLOCKED_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 export type ModerationCode =

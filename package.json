@@ -4,6 +4,8 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
+    "test": "for test_file in tests/*.test.ts; do node --experimental-strip-types \"$test_file\" || exit; done",
+    "typecheck": "tsc --noEmit",
     "dev": "vite dev",
     "build": "vite build",
     "build:dev": "vite build --mode development",
