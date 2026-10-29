@@ -31,8 +31,22 @@ try {
  GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
  CREATE PUBLICATION supabase_realtime;`);
-  for (const file of (await readdir(root + "/migrations")).sort())
+  const verifyPreflight = async (expected) => {
+    const results = await owner.query(await readFile(root + "/deployment-preflight.sql", "utf8"));
+    const row = results
+      .flatMap((result) => result.rows ?? [])
+      .find((row) => row.check_name === "migration_objects");
+    if (!row || row.rate_table_exists !== expected || row.rate_function_exists !== expected)
+      throw Error("Preflight returned an unexpected migration state");
+    console.log(
+      `PASS PostgreSQL: read-only preflight (${expected ? "after" : "before"} release migrations)`,
+    );
+  };
+  for (const file of (await readdir(root + "/migrations")).sort()) {
+    if (file === "20261029080000_restrict_emotion_inserts.sql") await verifyPreflight(false);
     await owner.query(await readFile(root + "/migrations/" + file, "utf8"));
+  }
+  await verifyPreflight(true);
   for (const file of [
     "emotion_insert_access.sql",
     "emotion_rate_limit.sql",
