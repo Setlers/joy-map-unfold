@@ -1,9 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getRequestHeader, getRequestIP } from "@tanstack/react-start/server";
 import { z } from "zod";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { moderateMessage } from "./moderation";
-import { emotionRateLimitSubject } from "./emotion-rate-limit.server";
 import { normalizeLongitude } from "./coordinates";
 
 const EMOTION_KEYS = ["joy", "calm", "sadness", "anger", "anxiety", "hope"] as const;
@@ -34,6 +31,15 @@ export const submitEmotion = createServerFn({ method: "POST" })
       };
     }
     const cleanMessage = moderation.clean.length > 0 ? moderation.clean : null;
+
+    // Resolve server-only dependencies inside the handler, which TanStack
+    // removes from the client build. Never load privileged clients in the UI.
+    const [{ supabaseAdmin }, { emotionRateLimitSubject }, { getRequestHeader, getRequestIP }] =
+      await Promise.all([
+        import("@/integrations/supabase/client.server"),
+        import("./emotion-rate-limit.server"),
+        import("@tanstack/react-start/server"),
+      ]);
 
     const subject = await emotionRateLimitSubject(
       getRequestIP(),

@@ -53,6 +53,10 @@ These checks do not establish production Realtime or successful audio playback.
 1. Verify the **deployment's** server-only `SUPABASE_URL` and
    `SUPABASE_SERVICE_ROLE_KEY`. A configured key in the Codex environment alone
    does not verify the Lovable deployment. Never expose the service key as VITE_*.
+   Lovable reports that its Cloud runtime injects these automatically; managed
+   secrets may not appear in the editable Secrets list. Do not replace them based
+   on the separate Codex environment's authentication failure. The privileged
+   database client and request helpers are loaded only inside the server handler.
 2. Verify the hosting provider's client-address propagation. By default forwarded
    headers are ignored. Only enable `EMOTION_TRUST_CLOUDFLARE_IP=true` if the
    origin is protected and Cloudflare overwrites that header. Missing addresses
