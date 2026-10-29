@@ -1,10 +1,36 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 
 export type Lang = "en" | "sk";
 
 type Dict = Record<string, string>;
 
 const en: Dict = {
+  "share.title": "Your feeling can travel further",
+  "share.description": "Your feeling is saved. Invite someone to add theirs.",
+  "share.prompt": "How are you feeling today?",
+  "share.statement.joy": "Today, I'm sharing a little joy.",
+  "share.statement.calm": "Today, I'm sharing a little calm.",
+  "share.statement.sadness": "Sadness has a place on my map, too.",
+  "share.statement.anger": "Today, I'm sharing how anger feels.",
+  "share.statement.anxiety": "Today, I'm making room for anxiety.",
+  "share.statement.hope": "Today, I'm sharing a little hope.",
+  "share.privacy": "Your location and note are not included in the card or link.",
+  "share.action": "Share my feeling",
+  "share.copy": "Copy link",
+  "share.download": "Save image",
+  "share.link": "Invitation link",
+  "share.copied": "Link copied. Send it to someone you care about.",
+  "share.copy.manual": "Select and copy the link above to share it.",
+  "share.done": "Shared with your chosen app.",
+  "share.image.error": "Image export is unavailable. You can still share the link.",
+  "share.close": "Close sharing",
+  "share.back": "Back to the map",
+  "share.reopen": "Share my saved feeling",
+  "invite.title": "An invitation to share a feeling",
+  "invite.description":
+    "Someone shared a feeling: {emotion}. How are you feeling today? Choose your own emotion, then tap the map.",
+  "invite.action": "Choose my feeling",
+  "invite.dismiss": "Dismiss invitation",
   "feed.loading": "Loading feelings…",
   "feed.snapshot": "{count} feelings loaded",
   "feed.empty": "No feelings in this time range yet. You can add the first one.",
@@ -73,6 +99,32 @@ const en: Dict = {
 };
 
 const sk: Dict = {
+  "share.title": "Tvoj pocit môže ísť ďalej",
+  "share.description": "Tvoj pocit je uložený. Pozvi niekoho, aby pridal svoj.",
+  "share.prompt": "Ako sa dnes cítiš ty?",
+  "share.statement.joy": "Dnes posielam svetu trochu radosti.",
+  "share.statement.calm": "Dnes posielam svetu trochu pokoja.",
+  "share.statement.sadness": "Aj smútok má na mojej mape miesto.",
+  "share.statement.anger": "Dnes zdieľam aj svoj hnev.",
+  "share.statement.anxiety": "Dnes dávam priestor aj úzkosti.",
+  "share.statement.hope": "Dnes posielam svetu trochu nádeje.",
+  "share.privacy": "Poloha a text tvojej poznámky sa do kartičky ani odkazu nepridávajú.",
+  "share.action": "Zdieľať môj pocit",
+  "share.copy": "Kopírovať odkaz",
+  "share.download": "Uložiť obrázok",
+  "share.link": "Odkaz na pozvanie",
+  "share.copied": "Odkaz je skopírovaný. Pošli ho niekomu blízkemu.",
+  "share.copy.manual": "Označ a skopíruj odkaz vyššie.",
+  "share.done": "Odovzdané vybranej aplikácii.",
+  "share.image.error": "Obrázok sa nepodarilo vytvoriť. Odkaz môžeš zdieľať aj tak.",
+  "share.close": "Zavrieť zdieľanie",
+  "share.back": "Späť na mapu",
+  "share.reopen": "Zdieľať uložený pocit",
+  "invite.title": "Pozvanie zdieľať pocit",
+  "invite.description":
+    "Niekto zdieľa pocit: {emotion}. Ako sa dnes cítiš ty? Vyber si vlastnú emóciu a klikni na mapu.",
+  "invite.action": "Vybrať môj pocit",
+  "invite.dismiss": "Skryť pozvanie",
   "feed.loading": "Načítavam pocity…",
   "feed.snapshot": "{count} načítaných pocitov",
   "feed.empty": "V tomto období zatiaľ nie sú žiadne pocity. Môžeš pridať prvý.",
@@ -170,7 +222,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     setLangState(detectInitial());
   }, []);
 
-  const setLang = (l: Lang) => {
+  const setLang = useCallback((l: Lang) => {
     setLangState(l);
     try {
       localStorage.setItem(STORAGE_KEY, l);
@@ -180,7 +232,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     if (typeof document !== "undefined") {
       document.documentElement.lang = l;
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (typeof document !== "undefined") {

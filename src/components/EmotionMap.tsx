@@ -12,6 +12,8 @@ import { OnboardingHint } from "@/components/OnboardingHint";
 import { toast } from "sonner";
 import { readEmotionFeed, type EmotionRow } from "@/lib/emotion-feed";
 import { summarizeEmotions } from "@/lib/emotion-summary";
+import { ShareFeelingDialog } from "@/components/ShareFeelingDialog";
+import { reportFeelingShare, type ShareLanguage } from "@/lib/feeling-share";
 
 function rowKey(r: EmotionRow) {
   return `${r.created_at}|${r.emotion}|${r.lat}|${r.lng}|${r.message ?? ""}`;
@@ -62,8 +64,31 @@ function approxRegion(lat: number, lng: number) {
   return `${ns} ${band}`;
 }
 
-export function EmotionMap() {
-  const { t, lang } = useI18n();
+export function EmotionMap({
+  invitationEmotion,
+  invitationLanguage,
+}: {
+  invitationEmotion?: EmotionKey;
+  invitationLanguage?: ShareLanguage;
+}) {
+  const { t, lang, setLang } = useI18n();
+  const [sharedEmotion, setSharedEmotion] = useState<EmotionKey | null>(null);
+  const [lastSavedEmotion, setLastSavedEmotion] = useState<EmotionKey | null>(null);
+  const [invitationDismissed, setInvitationDismissed] = useState(false);
+  const invitationLoggedRef = useRef<EmotionKey | null>(null);
+  const invitationEmotionRef = useRef(invitationEmotion);
+  const emotionPickerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    invitationEmotionRef.current = invitationEmotion;
+    if (invitationEmotion && invitationLanguage) setLang(invitationLanguage);
+  }, [invitationEmotion, invitationLanguage, setLang]);
+  useEffect(() => {
+    if (invitationEmotion && invitationLoggedRef.current !== invitationEmotion) {
+      invitationLoggedRef.current = invitationEmotion;
+      reportFeelingShare("invite_opened", invitationEmotion);
+    }
+    setInvitationDismissed(false);
+  }, [invitationEmotion]);
   const tRef = useRef(t);
   useEffect(() => {
     tRef.current = t;
@@ -267,6 +292,10 @@ export function EmotionMap() {
             tt("toast.dropped", { emoji: meta.emoji, label: tt(`emotion.${emotion}`) }),
           );
           setMessage("");
+          setLastSavedEmotion(emotion);
+          setSharedEmotion(emotion);
+          setInvitationDismissed(true);
+          if (invitationEmotionRef.current) reportFeelingShare("invite_submitted", emotion);
         } catch (err) {
           console.error(err);
           toast.error(tt("toast.error"));
@@ -533,6 +562,52 @@ export function EmotionMap() {
             {t("hero.subtitle")}
           </p>
 
+          {invitationEmotion && !invitationDismissed && (
+            <section
+              aria-label={t("invite.title")}
+              className="pointer-events-auto mt-3 max-w-md rounded-2xl border border-border bg-surface/90 p-4 shadow-xl backdrop-blur-md"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-medium">
+                  {EMOTIONS_BY_KEY[invitationEmotion].emoji} {t("invite.title")}
+                </p>
+                <button
+                  type="button"
+                  aria-label={t("invite.dismiss")}
+                  onClick={() => setInvitationDismissed(true)}
+                  className="rounded-full px-2 text-muted-foreground"
+                >
+                  ×
+                </button>
+              </div>
+              <p className="mt-2 text-sm">
+                {t("invite.description", { emotion: t(`emotion.${invitationEmotion}`) })}
+              </p>
+              <button
+                type="button"
+                className="mt-3 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background"
+                onClick={() => {
+                  setInvitationDismissed(true);
+                  reportFeelingShare("invite_accepted", invitationEmotion);
+                  emotionPickerRef.current
+                    ?.querySelector<HTMLButtonElement>('button[aria-pressed="true"]')
+                    ?.focus();
+                }}
+              >
+                {t("invite.action")}
+              </button>
+            </section>
+          )}
+          {lastSavedEmotion && (
+            <button
+              type="button"
+              onClick={() => setSharedEmotion(lastSavedEmotion)}
+              className="pointer-events-auto mt-2 rounded-full border border-border bg-surface/80 px-3 py-1.5 text-xs"
+            >
+              {t("share.reopen")}
+            </button>
+          )}
+
           <div
             className="pointer-events-auto max-w-md text-sm"
             aria-live="polite"
@@ -701,7 +776,10 @@ export function EmotionMap() {
           </span>
         </div>
 
-        <div className="pointer-events-auto flex max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-border bg-surface/80 p-1.5 shadow-2xl backdrop-blur-xl">
+        <div
+          ref={emotionPickerRef}
+          className="pointer-events-auto flex max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-border bg-surface/80 p-1.5 shadow-2xl backdrop-blur-xl"
+        >
           {EMOTIONS.map((e) => {
             const active = e.key === selected;
             return (
@@ -732,7 +810,10 @@ export function EmotionMap() {
           })}
         </div>
       </div>
-      <OnboardingHint />
+      {!invitationEmotion && <OnboardingHint />}
+      {sharedEmotion && (
+        <ShareFeelingDialog emotion={sharedEmotion} onClose={() => setSharedEmotion(null)} />
+      )}
     </div>
   );
 }
