@@ -72,6 +72,12 @@ of a successful production migration or actual mobile native sharing.
    their access rules, four server RPCs and a coordinate trigger. It neither
    rewrites nor deletes existing emotion records. Apply it through the migration
    runner and record the version; do not blindly replay CREATE statements.
+   When using the SQL editor instead of the migration runner, use the complete
+   alternative `docs/sql/install-running-together.sql` once after the empty-table
+   preflight. It contains the same migration plus history recording, a schema
+   reload notification and verification, all in one transaction. Do not run both
+   installation paths. Verify this alternative in isolation with
+   `RUNNING_INSTALL_MODE=sql-editor node scripts/check-database.mjs`.
 2. Keep the existing server-only Supabase credentials and confirmed
    `EMOTION_TRUST_CLOUDFLARE_IP=true` deployment configuration. If the visitor IP
    is unavailable, a shared restrictive bucket is used, not forwarded headers.

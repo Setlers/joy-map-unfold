@@ -31,6 +31,18 @@ try {
  GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
  CREATE PUBLICATION supabase_realtime;`);
+  const editorInstall = process.env.RUNNING_INSTALL_MODE === "sql-editor";
+  const canonicalRunning = await readFile(
+    root + "/migrations/20261029120000_running_together.sql",
+    "utf8",
+  );
+  const editorSql = await readFile(root + "/../docs/sql/install-running-together.sql", "utf8");
+  if (!editorSql.includes(canonicalRunning.trimEnd().slice(0, -"COMMIT;".length)))
+    throw Error("SQL editor artifact differs from canonical migration");
+  if (editorInstall)
+    await owner.query(
+      "CREATE SCHEMA supabase_migrations; CREATE TABLE supabase_migrations.schema_migrations(version text PRIMARY KEY); INSERT INTO supabase_migrations.schema_migrations VALUES('20261029082000');",
+    );
   const verifyPreflight = async (expected) => {
     const results = await owner.query(await readFile(root + "/deployment-preflight.sql", "utf8"));
     const row = results
@@ -44,7 +56,22 @@ try {
   };
   for (const file of (await readdir(root + "/migrations")).sort()) {
     if (file === "20261029080000_restrict_emotion_inserts.sql") await verifyPreflight(false);
-    await owner.query(await readFile(root + "/migrations/" + file, "utf8"));
+    if (editorInstall && file === "20261029120000_running_together.sql") {
+      const results = await owner.query(editorSql);
+      const result = results
+        .flatMap((result) => result.rows ?? [])
+        .find((row) => "migration_recorded" in row);
+      if (!result || Object.values(result).some((value) => value !== true))
+        throw Error("SQL editor verification failed");
+      const history = await owner.query(
+        "SELECT version FROM supabase_migrations.schema_migrations ORDER BY version",
+      );
+      if (history.rows.length !== 2 || history.rows[1].version !== "20261029120000")
+        throw Error("Migration history mismatch");
+      console.log("PASS PostgreSQL: SQL editor install, permissions, RLS and history recording");
+    } else {
+      await owner.query(await readFile(root + "/migrations/" + file, "utf8"));
+    }
   }
   await verifyPreflight(true);
   for (const file of [
