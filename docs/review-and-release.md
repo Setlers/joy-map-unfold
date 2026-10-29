@@ -16,7 +16,7 @@ npm run typecheck
 npm run build
 ```
 
-There are 86 tests across seven files, including feeling sharing. `npm run lint` still reports existing
+There are 91 tests across eight files, including sharing and running. `npm run lint` still reports existing
 formatting issues and a `prefer-const` error in the generated Supabase preview
 storage code; do not treat this as a clean global lint baseline.
 

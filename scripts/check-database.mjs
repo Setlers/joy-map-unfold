@@ -51,6 +51,7 @@ try {
     "emotion_insert_access.sql",
     "emotion_rate_limit.sql",
     "coordinate_precision.sql",
+    "running_together.sql",
   ]) {
     await owner.query(await readFile(root + "/tests/" + file, "utf8"));
     console.log("PASS PostgreSQL: " + file);
@@ -72,6 +73,36 @@ try {
     if (admitted !== 1) throw Error(label + ": admitted " + admitted);
     console.log("PASS PostgreSQL: " + label + " admits 1 of 20 concurrent connections");
   };
+  const trainingClaims = await Promise.all(
+    workers.map((c) =>
+      c.query(
+        "SELECT public.start_training(repeat('1',64),repeat('2',64),48.15,17.15,30,NULL) AS result",
+      ),
+    ),
+  );
+  if (trainingClaims.filter((r) => r.rows[0].result.ok).length !== 1)
+    throw Error("Concurrent duplicate training starts");
+  const sessionId = trainingClaims.find((r) => r.rows[0].result.ok).rows[0].result.session.id;
+  const cheers = await Promise.all(
+    workers.map((c) =>
+      c.query("SELECT public.cheer_training(repeat('3',64),repeat('4',64),$1::uuid) AS result", [
+        sessionId,
+      ]),
+    ),
+  );
+  if (cheers.filter((r) => r.rows[0].result.ok).length !== 1)
+    throw Error("Concurrent duplicate cheers");
+  console.log("PASS PostgreSQL: 20 concurrent starts/cheers each accept exactly one");
+  const sharedIpClaims = await Promise.all(
+    workers.map((c, index) =>
+      c.query("SELECT public.start_training($1,repeat('5',64),48,17,30,NULL) AS result", [
+        (index + 100).toString(16).padStart(64, "0"),
+      ]),
+    ),
+  );
+  if (sharedIpClaims.filter((r) => r.rows[0].result.ok).length !== 1)
+    throw Error("Training IP limit bypassed by parallel identities");
+  console.log("PASS PostgreSQL: shared-IP start limit survives 20 distinct identities");
   await run("fresh slot");
   await owner.query(
     "UPDATE public.emotion_rate_limits SET blocked_until=clock_timestamp()-interval '1 second'",

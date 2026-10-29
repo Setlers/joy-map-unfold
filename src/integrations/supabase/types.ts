@@ -14,6 +14,15 @@ export type Database = {
   }
   public: {
     Tables: {
+      training_sessions: {
+        Row: {
+          id: string; nickname: string | null; lat: number; lng: number;
+          started_at: string; expires_at: string; ended_at: string | null; cheers_count: number;
+        }
+        Insert: { nickname?: string | null; lat: number; lng: number; expires_at: string }
+        Update: { ended_at?: string | null; cheers_count?: number }
+        Relationships: []
+      }
       emotions: {
         Row: {
           created_at: string
@@ -46,6 +55,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      start_training: { Args: { p_owner_hash: string; p_subject_hash: string; p_lat: number; p_lng: number; p_minutes: number; p_nickname: string | null }; Returns: Json }
+      my_training: { Args: { p_owner_hash: string }; Returns: Json }
+      end_training: { Args: { p_owner_hash: string; p_session_id: string }; Returns: boolean }
+      cheer_training: { Args: { p_owner_hash: string; p_subject_hash: string; p_session_id: string }; Returns: Json }
       claim_emotion_submission: {
         Args: { p_subject_hash: string }
         Returns: number

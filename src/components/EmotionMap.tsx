@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type L from "leaflet";
+import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { EMOTIONS, EMOTIONS_BY_KEY, type EmotionKey } from "@/lib/emotions";
@@ -542,6 +543,20 @@ export function EmotionMap({
       >
         {/* Left: title, subtitle, mood */}
         <header className="flex min-w-0 flex-col items-start gap-1">
+          <nav className="pointer-events-auto mb-2 flex gap-2 text-xs">
+            <span
+              aria-current="page"
+              className="rounded-full border border-border bg-surface/80 px-3 py-1.5"
+            >
+              {t("mode.feelings")}
+            </span>
+            <Link
+              to="/running"
+              className="rounded-full border border-border bg-surface/80 px-3 py-1.5"
+            >
+              🏃 {t("mode.running")}
+            </Link>
+          </nav>
           <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.18em] text-muted-foreground backdrop-blur-md">
             <span
               className={`size-1.5 rounded-full ${loadState === "ready" && realtimeState === "live" ? "bg-emotion-hope" : "bg-muted-foreground"}`}
