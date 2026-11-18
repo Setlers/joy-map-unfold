@@ -5,6 +5,7 @@ export type Lang = "en" | "sk";
 type Dict = Record<string, string>;
 
 const en: Dict = {
+  "map.settings": "Sound and map display",
   "mode.feelings": "Feelings",
   "mode.running": "Running now",
   "run.title": "You’re not training alone.",
@@ -150,6 +151,7 @@ const en: Dict = {
 };
 
 const sk: Dict = {
+  "map.settings": "Zvuk a zobrazenie mapy",
   "mode.feelings": "Pocity",
   "mode.running": "Práve bežíme",
   "run.title": "Netrénuješ sám.",
@@ -235,7 +237,7 @@ const sk: Dict = {
   "feed.retry": "Skúsiť znova",
   "live.feelings": "Naživo · {count} načítaných pocitov",
   "hero.title": "Pocity sveta",
-  "hero.subtitle": "Anonymne. Vyber si emóciu, prípadne nechaj krátku poznámku, a klikni na mapu.",
+  "hero.subtitle": "Anonymne zdieľaj svoje pocity s ostatnými. Objavuj, ako sa svet cíti…",
   "mood.summary": "Najčastejšie: {emotions} ({count}/{total})",
   "mood.summary.tied": "Zhoda: {emotions} (každá {count}/{total})",
   "mood.sample":

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type L from "leaflet";
+import { CalendarDays, ChevronDown, Settings2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -130,6 +131,39 @@ export function EmotionMap({
     setConnectionAttempt((attempt) => attempt + 1);
   };
   const [heatmap, setHeatmap] = useState(false);
+  const sideControlsRef = useRef<HTMLDivElement>(null);
+  const [mapMenu, setMapMenu] = useState<"range" | "settings" | null>(null);
+  const [desktopControls, setDesktopControls] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 1280px)");
+    const update = () => {
+      setDesktopControls(media.matches);
+      setMapMenu(null);
+    };
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    if (!mapMenu) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        sideControlsRef.current?.querySelector<HTMLElement>("details[open] summary")?.focus();
+        setMapMenu(null);
+      }
+    };
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !sideControlsRef.current?.contains(event.target)) {
+        setMapMenu(null);
+      }
+    };
+    document.addEventListener("keydown", close);
+    document.addEventListener("pointerdown", outside);
+    return () => {
+      document.removeEventListener("keydown", close);
+      document.removeEventListener("pointerdown", outside);
+    };
+  }, [mapMenu]);
   const [range, setRangeState] = useState<RangeKey>("today");
   const windowMs = RANGE_BY_KEY[range];
   const [nowTs, setNowTs] = useState(() => Date.now());
@@ -141,7 +175,7 @@ export function EmotionMap({
     const container = containerRef.current;
     if (!header || !container) return;
     const update = () =>
-      container.style.setProperty(
+      container.parentElement?.style.setProperty(
         "--map-header-height",
         `${header.getBoundingClientRect().height}px`,
       );
@@ -533,13 +567,13 @@ export function EmotionMap({
   const moodMeta = mood?.keys.length === 1 ? EMOTIONS_BY_KEY[mood.keys[0]] : null;
 
   return (
-    <div className="relative h-[100dvh] w-full overflow-hidden">
+    <div className="emotion-map relative h-[100dvh] w-full overflow-hidden">
       <div ref={containerRef} className="absolute inset-0" />
 
       {/* Top area: header + controls */}
       <div
         ref={headerRef}
-        className="pointer-events-none absolute inset-x-0 top-0 z-[400] flex flex-col gap-3 p-5 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:p-7"
+        className="pointer-events-none absolute inset-x-0 top-0 z-[400] flex flex-col gap-3 p-4 pt-16 xl:flex-row xl:flex-wrap xl:items-start xl:justify-between xl:p-7"
       >
         {/* Left: title, subtitle, mood */}
         <header className="flex min-w-0 flex-col items-start gap-1">
@@ -557,19 +591,6 @@ export function EmotionMap({
               🏃 {t("mode.running")}
             </Link>
           </nav>
-          <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.18em] text-muted-foreground backdrop-blur-md">
-            <span
-              className={`size-1.5 rounded-full ${loadState === "ready" && realtimeState === "live" ? "bg-emotion-hope" : "bg-muted-foreground"}`}
-            />
-            {loadState === "loading"
-              ? t("feed.loading")
-              : t(
-                  loadState === "ready" && realtimeState === "live"
-                    ? "live.feelings"
-                    : "feed.snapshot",
-                  { count: freshRows.length },
-                )}
-          </div>
           <h1 className="mt-2 max-w-full text-3xl font-semibold leading-[1.05] sm:max-w-xl sm:text-5xl">
             {t("hero.title")}
           </h1>
@@ -628,6 +649,7 @@ export function EmotionMap({
             aria-live="polite"
             aria-atomic="true"
           >
+            {loadState === "loading" && <p role="status">{t("feed.loading")}</p>}
             {loadState === "error" && (
               <p role="alert" className="mt-2 rounded-xl border border-border bg-surface/90 p-3">
                 {t(freshRows.length ? "feed.error.cached" : "feed.error")}
@@ -686,16 +708,81 @@ export function EmotionMap({
           )}
         </header>
 
-        {/* Right: language + range + toggle */}
-        <div className="pointer-events-auto flex flex-col items-start gap-2 sm:items-end">
-          <div className="flex flex-wrap items-start gap-2">
-            <LanguageSwitcher />
+        <div className="pointer-events-auto absolute right-4 top-4 xl:static">
+          <LanguageSwitcher />
+        </div>
+      </div>
+
+      <div
+        ref={sideControlsRef}
+        className="map-side-controls pointer-events-auto absolute right-[10px] z-[450] flex flex-col items-end gap-2 xl:right-7 xl:top-20"
+      >
+        <details open={desktopControls || mapMenu === "range"} className="relative">
+          <summary
+            onClick={(event) => {
+              event.preventDefault();
+              setMapMenu(mapMenu === "range" ? null : "range");
+            }}
+            className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-border bg-surface/95 px-3 text-sm shadow-lg xl:hidden [&::-webkit-details-marker]:hidden"
+            aria-label={t("range.label")}
+          >
+            <CalendarDays size={16} aria-hidden="true" />
+            {t(`range.${range}`)}
+            <ChevronDown size={14} aria-hidden="true" />
+          </summary>
+          <div className="absolute right-[calc(100%+0.5rem)] top-0 w-44 max-w-[calc(100vw-5rem)] xl:static xl:w-auto xl:max-w-none">
+            <div
+              role="tablist"
+              aria-label={t("range.label")}
+              aria-orientation={desktopControls ? "horizontal" : "vertical"}
+              className="flex flex-col gap-1 rounded-2xl border border-border bg-surface/95 p-2 text-xs text-foreground backdrop-blur-md xl:flex-row xl:rounded-full xl:bg-surface/70 xl:p-1"
+            >
+              {RANGES.map((r) => {
+                const active = range === r.key;
+                return (
+                  <button
+                    key={r.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    title={t(`range.description.${r.key}`)}
+                    onClick={(event) => {
+                      if (!desktopControls)
+                        event.currentTarget.closest("details")?.querySelector("summary")?.focus();
+                      setRange(r.key);
+                      setMapMenu(null);
+                    }}
+                    className={[
+                      "relative min-h-11 rounded-xl px-3 py-2 text-left transition-colors xl:min-h-0 xl:rounded-full xl:py-1",
+                      active
+                        ? "bg-foreground/90 text-background shadow-[0_4px_18px_-6px_rgba(0,0,0,0.5)]"
+                        : "text-muted-foreground hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    {t(`range.${r.key}`)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </details>
+        <details open={desktopControls || mapMenu === "settings"} className="relative">
+          <summary
+            onClick={(event) => {
+              event.preventDefault();
+              setMapMenu(mapMenu === "settings" ? null : "settings");
+            }}
+            className="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center rounded-xl border border-border bg-surface/95 px-3 shadow-lg xl:hidden [&::-webkit-details-marker]:hidden"
+            aria-label={t("map.settings")}
+          >
+            <Settings2 size={19} aria-hidden="true" />
+          </summary>
+          <div className="absolute right-[calc(100%+0.5rem)] top-0 flex w-56 max-w-[calc(100vw-5rem)] flex-col items-stretch gap-3 rounded-2xl border border-border bg-surface/95 p-3 shadow-xl [&_button]:min-h-11 xl:static xl:w-auto xl:max-w-none xl:flex-row xl:items-start xl:border-0 xl:bg-transparent xl:p-0 xl:shadow-none xl:[&_button]:min-h-0">
             <AmbientSound />
             <button
               type="button"
               onClick={() => setHeatmap((v) => !v)}
               aria-pressed={heatmap}
-              aria-describedby={heatmap ? undefined : "points-description"}
               className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-foreground/85 backdrop-blur-md transition-colors hover:bg-accent"
             >
               <span
@@ -710,42 +797,7 @@ export function EmotionMap({
               {heatmap ? t("toggle.heatmap") : t("toggle.points")}
             </button>
           </div>
-
-          {!heatmap && (
-            <p id="points-description" className="max-w-xs text-xs text-muted-foreground">
-              {t(`points.description${range === "all" ? ".all" : ""}`)}
-            </p>
-          )}
-
-          {/* Time range filter */}
-          <div
-            role="tablist"
-            aria-label={t("range.label")}
-            className="inline-flex flex-wrap items-center gap-0.5 rounded-full border border-border bg-surface/70 p-1 text-[11px] uppercase tracking-[0.14em] text-foreground/80 backdrop-blur-md sm:flex-nowrap sm:text-xs"
-          >
-            {RANGES.map((r) => {
-              const active = range === r.key;
-              return (
-                <button
-                  key={r.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  title={t(`range.description.${r.key}`)}
-                  onClick={() => setRange(r.key)}
-                  className={[
-                    "relative rounded-full px-2.5 py-1 transition-all duration-300 sm:px-3",
-                    active
-                      ? "bg-foreground/90 text-background shadow-[0_4px_18px_-6px_rgba(0,0,0,0.5)]"
-                      : "text-muted-foreground hover:text-foreground",
-                  ].join(" ")}
-                >
-                  {t(`range.${r.key}`)}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        </details>
       </div>
 
       {/* Emotional Whispers */}
