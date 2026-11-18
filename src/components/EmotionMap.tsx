@@ -75,7 +75,6 @@ export function EmotionMap({
 }) {
   const { t, lang, setLang } = useI18n();
   const [sharedEmotion, setSharedEmotion] = useState<EmotionKey | null>(null);
-  const [lastSavedEmotion, setLastSavedEmotion] = useState<EmotionKey | null>(null);
   const [invitationDismissed, setInvitationDismissed] = useState(false);
   const invitationLoggedRef = useRef<EmotionKey | null>(null);
   const invitationEmotionRef = useRef(invitationEmotion);
@@ -327,7 +326,6 @@ export function EmotionMap({
             tt("toast.dropped", { emoji: meta.emoji, label: tt(`emotion.${emotion}`) }),
           );
           setMessage("");
-          setLastSavedEmotion(emotion);
           setSharedEmotion(emotion);
           setInvitationDismissed(true);
           if (invitationEmotionRef.current) reportFeelingShare("invite_submitted", emotion);
@@ -573,25 +571,27 @@ export function EmotionMap({
       {/* Top area: header + controls */}
       <div
         ref={headerRef}
-        className="pointer-events-none absolute inset-x-0 top-0 z-[400] flex flex-col gap-3 p-4 pt-16 xl:flex-row xl:flex-wrap xl:items-start xl:justify-between xl:p-7"
+        className="pointer-events-none absolute inset-x-0 top-0 z-[400] flex flex-col gap-3 p-4 xl:p-7"
       >
-        {/* Left: title, subtitle, mood */}
-        <header className="flex min-w-0 flex-col items-start gap-1">
-          <nav className="pointer-events-auto mb-2 flex gap-2 text-xs">
+        <div className="flex w-full items-center justify-between gap-2">
+          <nav className="pointer-events-auto flex items-center gap-1 text-[11px] sm:gap-2 sm:text-xs">
             <span
               aria-current="page"
-              className="rounded-full border border-border bg-surface/80 px-3 py-1.5"
+              className="whitespace-nowrap rounded-full border border-border bg-surface/80 px-2 py-1.5 sm:px-3"
             >
               {t("mode.feelings")}
             </span>
             <Link
               to="/running"
-              className="rounded-full border border-border bg-surface/80 px-3 py-1.5"
+              className="whitespace-nowrap rounded-full border border-border bg-surface/80 px-2 py-1.5 sm:px-3"
             >
               🏃 {t("mode.running")}
             </Link>
           </nav>
-          <h1 className="mt-2 max-w-full text-3xl font-semibold leading-[1.05] sm:max-w-xl sm:text-5xl">
+          <LanguageSwitcher />
+        </div>
+        <header className="flex min-w-0 flex-col items-start gap-1">
+          <h1 className="mt-2 max-w-[calc(100%_-_8rem)] text-3xl font-semibold leading-[1.05] xl:max-w-xl sm:text-5xl">
             {t("hero.title")}
           </h1>
           <p className="max-w-full text-sm text-muted-foreground sm:max-w-md sm:text-base">
@@ -633,15 +633,6 @@ export function EmotionMap({
                 {t("invite.action")}
               </button>
             </section>
-          )}
-          {lastSavedEmotion && (
-            <button
-              type="button"
-              onClick={() => setSharedEmotion(lastSavedEmotion)}
-              className="pointer-events-auto mt-2 rounded-full border border-border bg-surface/80 px-3 py-1.5 text-xs"
-            >
-              {t("share.reopen")}
-            </button>
           )}
 
           <div
@@ -707,17 +698,13 @@ export function EmotionMap({
             </div>
           )}
         </header>
-
-        <div className="pointer-events-auto absolute right-4 top-4 xl:static">
-          <LanguageSwitcher />
-        </div>
       </div>
 
-      <div
-        ref={sideControlsRef}
-        className="map-side-controls pointer-events-auto absolute right-[10px] z-[450] flex flex-col items-end gap-2 xl:right-7 xl:top-20"
-      >
-        <details open={desktopControls || mapMenu === "range"} className="relative">
+      <div ref={sideControlsRef} className="pointer-events-none absolute inset-0 z-[450]">
+        <details
+          open={desktopControls || mapMenu === "range"}
+          className="pointer-events-auto absolute right-4 top-16 xl:right-7 xl:top-20"
+        >
           <summary
             onClick={(event) => {
               event.preventDefault();
@@ -766,7 +753,10 @@ export function EmotionMap({
             </div>
           </div>
         </details>
-        <details open={desktopControls || mapMenu === "settings"} className="relative">
+        <details
+          open={desktopControls || mapMenu === "settings"}
+          className="map-side-controls pointer-events-auto absolute right-[10px] xl:right-7 xl:top-32"
+        >
           <summary
             onClick={(event) => {
               event.preventDefault();

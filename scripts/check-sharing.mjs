@@ -156,9 +156,13 @@ try {
   );
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden" });
-  await page.getByRole("button", { name: "Share my saved feeling", exact: true }).click();
-  await dialog.waitFor();
-  console.log("PASS sharing browser: manual clipboard fallback, Escape and reopening");
+  assert.equal(
+    await page.getByRole("button", { name: "Share my saved feeling", exact: true }).count(),
+    0,
+  );
+  console.log(
+    "PASS sharing browser: manual clipboard fallback, Escape and no saved-feeling button",
+  );
   const recipient = await context.newPage();
   recipient.on("pageerror", (e) => errors.push(e.message));
   await recipient.setViewportSize({ width: 390, height: 844 });
