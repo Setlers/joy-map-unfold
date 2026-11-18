@@ -684,7 +684,6 @@ export function EmotionMap({
               <span className="text-muted-foreground">· {t(`range.description.${range}`)}</span>
             </div>
           )}
-          <p className="mt-2 max-w-md text-xs text-muted-foreground">{t("mood.sample")}</p>
         </header>
 
         {/* Right: language + range + toggle */}
@@ -696,7 +695,7 @@ export function EmotionMap({
               type="button"
               onClick={() => setHeatmap((v) => !v)}
               aria-pressed={heatmap}
-              aria-describedby="heatmap-description"
+              aria-describedby={heatmap ? undefined : "points-description"}
               className="inline-flex items-center gap-2 rounded-full border border-border bg-surface/70 px-3 py-1.5 text-xs uppercase tracking-[0.16em] text-foreground/85 backdrop-blur-md transition-colors hover:bg-accent"
             >
               <span
@@ -712,9 +711,11 @@ export function EmotionMap({
             </button>
           </div>
 
-          <p id="heatmap-description" className="max-w-xs text-xs text-muted-foreground">
-            {t(`${heatmap ? "heatmap" : "points"}.description${range === "all" ? ".all" : ""}`)}
-          </p>
+          {!heatmap && (
+            <p id="points-description" className="max-w-xs text-xs text-muted-foreground">
+              {t(`points.description${range === "all" ? ".all" : ""}`)}
+            </p>
+          )}
 
           {/* Time range filter */}
           <div

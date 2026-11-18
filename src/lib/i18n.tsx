@@ -234,7 +234,7 @@ const sk: Dict = {
   "feed.connecting": "Pripájam živé aktualizácie…",
   "feed.retry": "Skúsiť znova",
   "live.feelings": "Naživo · {count} načítaných pocitov",
-  "hero.title": "Cíť\u00a0svet.",
+  "hero.title": "Pocity sveta",
   "hero.subtitle": "Anonymne. Vyber si emóciu, prípadne nechaj krátku poznámku, a klikni na mapu.",
   "mood.summary": "Najčastejšie: {emotions} ({count}/{total})",
   "mood.summary.tied": "Zhoda: {emotions} (každá {count}/{total})",
